@@ -9,7 +9,7 @@ import {
   ShieldCheck,
 } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
- 
+  
 import InMediamShield from '@/assets/inmediam-shield.svg'
 import MediamLogo from '@/assets/mediam.svg'
 import { api } from '@/lib/api'
