@@ -4,12 +4,21 @@ import { NavLink, useRouteError } from 'react-router-dom'
 
 import NotFoundImage from '../assets/not-found.svg'
 
+function getErrorMessage(error: unknown): string {
+  if (isAxiosError(error)) {
+    const data = error.response?.data as { message?: string; error?: string } | undefined
+    return data?.message ?? data?.error ?? error.message ?? 'Erro na requisição'
+  }
+  if (error instanceof Error) return error.message
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    return String((error as { message: unknown }).message)
+  }
+  return String(error ?? 'Erro desconhecido')
+}
+
 export function Error() {
-  const error = useRouteError() as Error
-  const axiosError = isAxiosError(error)
-  const errorMessage = axiosError
-    ? error?.response?.data.message
-    : error?.message || JSON.stringify(error)
+  const error = useRouteError()
+  const errorMessage = getErrorMessage(error)
 
   return (
     <div className="flex h-screen flex-col items-center justify-center gap-2 bg-background">

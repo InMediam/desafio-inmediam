@@ -3,12 +3,23 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Plan extends Model
 {
-    protected $guarded = [];
+    protected $fillable = [
+        'name',
+        'description',
+        'price',
+        'active',
+    ];
 
-    public function billings()
+    protected $casts = [
+        'price' => 'decimal:2',
+        'active' => 'boolean',
+    ];
+
+    public function billings(): HasMany
     {
         return $this->hasMany(Billing::class);
     }

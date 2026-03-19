@@ -7,6 +7,7 @@ use App\Models\Customer;
 use App\Models\Plan;
 use Carbon\Carbon;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Str;
 
 class BillingSeeder extends Seeder
 {
@@ -16,6 +17,7 @@ class BillingSeeder extends Seeder
         $customer = Customer::where('email', 'joao@email.com')->first();
 
         Billing::create([
+            'uuid' => (string) Str::uuid(),
             'plan_id' => $plan->id,
             'customer_id' => $customer->id,
             'amount' => $plan->price,
@@ -27,6 +29,7 @@ class BillingSeeder extends Seeder
         $customer = Customer::where('email', 'maria@email.com')->first();
 
         Billing::create([
+            'uuid' => (string) Str::uuid(),
             'plan_id' => $plan->id,
             'customer_id' => $customer->id,
             'amount' => $plan->price,
