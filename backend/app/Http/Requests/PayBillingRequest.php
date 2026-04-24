@@ -11,6 +11,13 @@ class PayBillingRequest extends FormRequest
         return true;
     }
 
+    protected function prepareForValidation(): void
+    {
+        $this->merge([
+            'card_number' => preg_replace('/\s+/', '', $this->card_number ?? ''),
+        ]);
+    }
+
     public function rules(): array
     {
         return [

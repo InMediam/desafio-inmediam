@@ -52,7 +52,7 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
   const { mutateAsync: submitPayment, isPending } = useMutation({
     mutationFn: (data: PaymentFormData) =>
       axios.post(`${import.meta.env.VITE_API_URL}/api/billing/${billingId}/pay`, {
-          card_number: data.cardNumber,
+          card_number: data.cardNumber.replace(/\s+/g, ''),
           card_holder_name: data.holderName,
           expiry_date: data.expiryDate,
           cvv: data.cvv,

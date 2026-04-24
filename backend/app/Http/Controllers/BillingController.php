@@ -39,25 +39,33 @@ class BillingController
         $baseUrl = config('services.asaas.url');
 
         try {
-            $customer = Http::withHeaders(['access_token' => $apiKey])->post("$baseUrl/customers", [
+            $customerResponse = Http::withHeaders(['access_token' => $apiKey])->post("$baseUrl/customers", [
                 'name' => $billing->customer->name,
                 'email' => $billing->customer->email,
                 'cpfCnpj' => $billing->customer->document,
                 'notificationDisabled' => true, // ATENÇÃO: Não recomendo modificar, pois o Asaas envia notificações mesmo no ambiente de sandbox.
             ]);
 
-            $customer = (object) $customer->json();
+            if ($customerResponse->failed()) {
+                return response()->json(['error' => 'Erro ao registrar cliente no gateway de pagamento'], 502);
+            }
 
-            $charge = Http::withHeaders(['access_token' => $apiKey])->post("$baseUrl/payments", [
+            $customer = (object) $customerResponse->json();
+
+            $chargeResponse = Http::withHeaders(['access_token' => $apiKey])->post("$baseUrl/payments", [
                 'customer' => $customer->id,
                 'billingType' => 'CREDIT_CARD',
                 'value' => $request->amount,
                 'dueDate' => $billing->due_date,
             ]);
 
-            $charge = (object) $charge->json();
+            if ($chargeResponse->failed()) {
+                return response()->json(['error' => 'Erro ao criar cobrança no gateway de pagamento'], 502);
+            }
 
-            $response = Http::withHeaders(['access_token' => $apiKey])->post("$baseUrl/payments/{$charge->id}/payWithCreditCard", [
+            $charge = (object) $chargeResponse->json();
+
+            $payResponse = Http::withHeaders(['access_token' => $apiKey])->post("$baseUrl/payments/{$charge->id}/payWithCreditCard", [
                 'creditCard' => [
                     'holderName' => $request->card_holder_name,
                     'number' => $request->card_number,
@@ -76,7 +84,11 @@ class BillingController
                 'remoteIp' => $request->ip(),
             ]);
 
-            $response = (object) $response->json();
+            if ($payResponse->failed()) {
+                return response()->json(['error' => 'Pagamento recusado pelo gateway de pagamento'], 422);
+            }
+
+            $response = (object) $payResponse->json();
         } catch (\Exception $e) {
             return response()->json(['error' => 'Falha na comunicação com o gateway de pagamento'], 502);
         }
