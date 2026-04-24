@@ -12,12 +12,12 @@ import { toast } from 'sonner'
 import { z } from 'zod'
 
 const paymentSchema = z.object({
-  cardNumber: z.string().regex(/^\d{13,19}$/, 'Número do cartão inválido'),
+  cardNumber: z.string().refine(v => /^\d{13,19}$/.test(v.replace(/\s+/g, '')), 'Número do cartão inválido'),
   holderName: z.string().min(3, 'Nome deve ter pelo menos 3 caracteres'),
   expiryDate: z.string().regex(/^(0[1-9]|1[0-2])\/\d{2}$/, 'Formato inválido (MM/AA)'),
   cvv: z.string().regex(/^\d{3,4}$/, 'CVV inválido'),
-  phone: z.string().regex(/^\d{10,11}$/, 'Telefone deve ter 10 ou 11 dígitos'),
-  postalCode: z.string().regex(/^\d{8}$/, 'CEP deve ter 8 dígitos'),
+  phone: z.string().regex(/^\(\d{2}\) \d{4,5}-\d{4}$/, 'Telefone inválido'),
+  postalCode: z.string().regex(/^\d{5}-\d{3}$/, 'CEP deve ter 8 dígitos'),
   addressNumber: z.string().min(1, 'Número do endereço é obrigatório'),
 })
 
@@ -28,40 +28,60 @@ interface PaymentFormProps {
   amount: number
 }
 
+function formatCardNumber(value: string): string {
+  const digits = value.replace(/\D/g, '').slice(0, 16)
+  return digits.replace(/(\d{4})(?=\d)/g, '$1 ')
+}
+
+function formatCep(value: string): string {
+  const digits = value.replace(/\D/g, '').slice(0, 8)
+  return digits.length > 5 ? `${digits.slice(0, 5)}-${digits.slice(5)}` : digits
+}
+
+function formatPhone(value: string): string {
+  const digits = value.replace(/\D/g, '').slice(0, 11)
+  if (digits.length <= 2) return digits.length ? `(${digits}` : ''
+  if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`
+  if (digits.length <= 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`
+  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`
+}
+
+function formatExpiry(value: string): string {
+  const digits = value.replace(/\D/g, '').slice(0, 4)
+  return digits.length > 2 ? `${digits.slice(0, 2)}/${digits.slice(2)}` : digits
+}
+
 export function PaymentForm({ billingId, amount }: PaymentFormProps) {
   const queryClient = useQueryClient()
-  const [cardNumber, setCardNumber] = useState<string>()
-  const [cvv, setCvv] = useState<string>()
+  const [cardNumber, setCardNumber] = useState('')
+  const [holderName, setHolderName] = useState('')
+  const [expiryDate, setExpiryDate] = useState('')
+  const [cvv, setCvv] = useState('')
+  const [phone, setPhone] = useState('')
+  const [postalCode, setPostalCode] = useState('')
   const [focused, setFocused] = useState<Focused>('')
 
   const {
     register,
     handleSubmit,
-    watch,
+    setValue,
     formState: { errors },
   } = useForm<PaymentFormData>({
     resolver: zodResolver(paymentSchema),
   })
 
-  const watchedValues = {
-    cardNumber: watch('cardNumber', ''),
-    holderName: watch('holderName', ''),
-    expiryDate: watch('expiryDate', ''),
-    cvv: watch('cvv', ''),
-  }
-
   const { mutateAsync: submitPayment, isPending } = useMutation({
     mutationFn: (data: PaymentFormData) =>
       axios.post(`${import.meta.env.VITE_API_URL}/api/billing/${billingId}/pay`, {
-          card_number: data.cardNumber.replace(/\s+/g, ''),
-          card_holder_name: data.holderName,
-          expiry_date: data.expiryDate,
-          cvv: data.cvv,
-          amount,
-          phone: data.phone,
-          postal_code: data.postalCode,
-          address_number: data.addressNumber,
-        }),
+        card_number: data.cardNumber.replace(/\s+/g, ''),
+        card_holder_name: data.holderName,
+        expiry_date: data.expiryDate,
+        cvv: data.cvv,
+        amount,
+        phone: data.phone.replace(/\D/g, ''),
+        postal_code: data.postalCode.replace(/\D/g, ''),
+        address_number: data.addressNumber,
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['billing', billingId] })
       queryClient.invalidateQueries({ queryKey: ['billings'] })
@@ -84,10 +104,10 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
 
       <div className="mb-6">
         <Cards
-          number={cardNumber || watchedValues.cardNumber || ''}
-          name={watchedValues.holderName}
-          expiry={watchedValues.expiryDate}
-          cvc={cvv || watchedValues.cvv || ''}
+          number={cardNumber}
+          name={holderName}
+          expiry={expiryDate}
+          cvc={cvv}
           focused={focused}
         />
       </div>
@@ -101,8 +121,9 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
             value={cardNumber}
             {...register('cardNumber')}
             onChange={(e) => {
-              setCardNumber(e.target.value)
-              register('cardNumber').onChange(e)
+              const formatted = formatCardNumber(e.target.value)
+              setCardNumber(formatted)
+              setValue('cardNumber', formatted, { shouldValidate: true })
             }}
             onFocus={() => setFocused('number')}
           />
@@ -118,7 +139,12 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
           <Input
             id="holderName"
             placeholder="JOÃO M A SILVA"
+            value={holderName}
             {...register('holderName')}
+            onChange={(e) => {
+              setHolderName(e.target.value)
+              setValue('holderName', e.target.value, { shouldValidate: true })
+            }}
             onFocus={() => setFocused('name')}
           />
           {errors.holderName && (
@@ -134,7 +160,13 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
             <Input
               id="expiryDate"
               placeholder="MM/AA"
+              value={expiryDate}
               {...register('expiryDate')}
+              onChange={(e) => {
+                const formatted = formatExpiry(e.target.value)
+                setExpiryDate(formatted)
+                setValue('expiryDate', formatted, { shouldValidate: true })
+              }}
               onFocus={() => setFocused('expiry')}
             />
             {errors.expiryDate && (
@@ -152,8 +184,9 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
               value={cvv}
               {...register('cvv')}
               onChange={(e) => {
-                setCvv(e.target.value)
-                register('cvv').onChange(e)
+                const digits = e.target.value.replace(/\D/g, '').slice(0, 4)
+                setCvv(digits)
+                setValue('cvv', digits, { shouldValidate: true })
               }}
               onFocus={() => setFocused('cvc')}
             />
@@ -172,8 +205,14 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
               <Label htmlFor="phone">Telefone</Label>
               <Input
                 id="phone"
-                placeholder="11999999999"
+                placeholder="(11) 99999-9999"
+                value={phone}
                 {...register('phone')}
+                onChange={(e) => {
+                  const formatted = formatPhone(e.target.value)
+                  setPhone(formatted)
+                  setValue('phone', formatted, { shouldValidate: true })
+                }}
               />
               {errors.phone && (
                 <p className="text-sm text-error-500">{errors.phone.message}</p>
@@ -185,8 +224,14 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
                 <Label htmlFor="postalCode">CEP</Label>
                 <Input
                   id="postalCode"
-                  placeholder="01310100"
+                  placeholder="01310-100"
+                  value={postalCode}
                   {...register('postalCode')}
+                  onChange={(e) => {
+                    const formatted = formatCep(e.target.value)
+                    setPostalCode(formatted)
+                    setValue('postalCode', formatted, { shouldValidate: true })
+                  }}
                 />
                 {errors.postalCode && (
                   <p className="text-sm text-error-500">
