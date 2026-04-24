@@ -1,12 +1,22 @@
 import { Badge } from '@inmediam/ui'
+import { useQuery } from '@tanstack/react-query'
+import axios from 'axios'
 import { Link } from 'react-router-dom'
 
 import InMediamShield from '@/assets/inmediam-shield.svg'
 import MediamLogo from '@/assets/mediam.svg'
 
 export function Home() {
+  const { data: billings, isLoading, isError } = useQuery({
+    queryKey: ['billings'],
+    queryFn: async () => {
+      const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/billing`)
+      return response.data
+    },
+  })
+
   return (
-    <div className="max- mx-auto flex min-h-screen w-full flex-col items-center justify-center gap-8 bg-muted p-6">
+    <div className="max-w-screen-lg mx-auto flex min-h-screen w-full flex-col items-center justify-center gap-8 bg-muted p-6">
       <div className="w-1/3 rounded-lg border border-border bg-card p-6 shadow-sm">
         <div className="mb-6 flex items-center justify-center gap-1">
           <img
@@ -26,27 +36,29 @@ export function Home() {
         </p>
 
         <div className="mt-6 space-y-3">
-          <Link
-            to="/billing/1"
-            className="flex items-center justify-between rounded-md border border-border p-4 transition-colors hover:bg-muted"
-          >
-            <div>
-              <p className="font-semibold text-foreground">Profissional</p>
-              <p className="text-sm text-muted-foreground">João da Silva</p>
-            </div>
-            <Badge variant="warning">Pendente</Badge>
-          </Link>
+          {isLoading && (
+            <p className="text-sm text-muted-foreground">Carregando cobranças...</p>
+          )}
 
-          <Link
-            to="/billing/2"
-            className="flex items-center justify-between rounded-md border border-border p-4 transition-colors hover:bg-muted"
-          >
-            <div>
-              <p className="font-semibold text-foreground">Básico</p>
-              <p className="text-sm text-muted-foreground">Maria Oliveira</p>
-            </div>
-            <Badge variant="success">Pago</Badge>
-          </Link>
+          {isError && (
+            <p className="text-sm text-error-500">Erro ao carregar cobranças.</p>
+          )}
+
+          {billings?.map((billing: any) => (
+            <Link
+              key={billing.id}
+              to={`/billing/${billing.id}`}
+              className="flex items-center justify-between rounded-md border border-border p-4 transition-colors hover:bg-muted"
+            >
+              <div>
+                <p className="font-semibold text-foreground">{billing.plan.name}</p>
+                <p className="text-sm text-muted-foreground">{billing.customer.name}</p>
+              </div>
+              <Badge variant={billing.status === 'paid' ? 'success' : 'warning'}>
+                {billing.status === 'paid' ? 'Pago' : 'Pendente'}
+              </Badge>
+            </Link>
+          ))}
         </div>
       </div>
     </div>

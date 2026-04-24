@@ -13,15 +13,29 @@ import { PaymentForm } from './components/payment-form'
 export function Billing() {
   const { id } = useParams<{ id: string }>()
 
-  const { data } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ['billing', id],
     queryFn: async () => {
-      const response = await axios
-        .create()
-        .get(`http://localhost:8000/api/billing/${id}`)
+      const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/billing/${id}`)
       return response.data
     },
   })
+
+  if (isLoading) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-muted">
+        <p className="text-muted-foreground">Carregando cobrança...</p>
+      </div>
+    )
+  }
+
+  if (isError) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-muted">
+        <p className="text-error-500">Não foi possível carregar a cobrança. Tente novamente.</p>
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-screen w-full flex-row items-start gap-8 bg-muted px-20 py-20">
