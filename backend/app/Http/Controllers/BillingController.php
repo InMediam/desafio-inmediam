@@ -12,6 +12,13 @@ use Illuminate\Support\Facades\Http;
 
 class BillingController
 {
+    public function index(): JsonResponse
+    {
+        $billings = Billing::with(['plan', 'customer'])->orderBy('created_at', 'desc')->get();
+
+        return response()->json($billings);
+    }
+
     public function show(string $id): JsonResponse
     {
         $billing = Billing::with(['plan', 'payments.creditCard'])->find($id);
