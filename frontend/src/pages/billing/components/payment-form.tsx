@@ -12,10 +12,10 @@ import { toast } from 'sonner'
 import { z } from 'zod'
 
 const paymentSchema = z.object({
-  cardNumber: z.string(),
-  holderName: z.string(),
-  expiryDate: z.string(),
-  cvv: z.string(),
+  cardNumber: z.string().regex(/^\d{13,19}$/, 'Número do cartão inválido'),
+  holderName: z.string().min(3, 'Nome deve ter pelo menos 3 caracteres'),
+  expiryDate: z.string().regex(/^\d{2}\/\d{2}$/, 'Formato inválido (MM/AA)'),
+  cvv: z.string().regex(/^\d{3,4}$/, 'CVV inválido'),
   phone: z.string().regex(/^\d{10,11}$/, 'Telefone deve ter 10 ou 11 dígitos'),
   postalCode: z.string().regex(/^\d{8}$/, 'CEP deve ter 8 dígitos'),
   addressNumber: z.string().min(1, 'Número do endereço é obrigatório'),
@@ -51,9 +51,7 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
 
   const { mutateAsync: submitPayment, isPending } = useMutation({
     mutationFn: (data: PaymentFormData) =>
-      axios
-        .create()
-        .post(`http://localhost:8000/api/billing/${billingId}/pay`, {
+      axios.post(`${import.meta.env.VITE_API_URL}/api/billing/${billingId}/pay`, {
           card_number: data.cardNumber,
           card_holder_name: data.holderName,
           expiry_date: data.expiryDate,
