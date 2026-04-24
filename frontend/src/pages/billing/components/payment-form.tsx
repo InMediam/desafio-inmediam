@@ -67,7 +67,7 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
       toast.success('Pagamento realizado com sucesso!')
     },
     onError: () => {
-      toast.success('Dados salvos com sucesso!')
+      toast.error('Erro ao processar pagamento. Verifique os dados e tente novamente.')
     },
   })
 
