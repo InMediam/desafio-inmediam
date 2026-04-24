@@ -6,7 +6,7 @@ use App\Models\Billing;
 use App\Models\CreditCard;
 use App\Models\Payment;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
+use App\Http\Requests\PayBillingRequest;
 use Illuminate\Support\Facades\Http;
 
 class BillingController
@@ -22,7 +22,7 @@ class BillingController
         return response()->json($billing);
     }
 
-    public function pay(string $id, Request $request): JsonResponse
+    public function pay(string $id, PayBillingRequest $request): JsonResponse
     {
         $billing = Billing::with('customer')->find($id);
 
