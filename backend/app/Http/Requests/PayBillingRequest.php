@@ -23,7 +23,7 @@ class PayBillingRequest extends FormRequest
         return [
             'card_holder_name' => ['required', 'string', 'min:3'],
             'card_number'      => ['required', 'string', 'digits_between:13,19'],
-            'expiry_date'      => ['required', 'string', 'regex:/^\d{2}\/\d{2}$/'],
+            'expiry_date'      => ['required', 'string', 'regex:/^(0[1-9]|1[0-2])\/\d{2}$/'],
             'cvv'              => ['required', 'string', 'digits_between:3,4'],
             'amount'           => ['required', 'numeric', 'min:0.01'],
             'phone'            => ['required', 'string', 'digits_between:10,11'],

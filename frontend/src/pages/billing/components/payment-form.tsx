@@ -2,7 +2,7 @@ import 'react-credit-cards-2/dist/es/styles-compiled.css'
 
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Button, Input, Label } from '@inmediam/ui'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { Loader2 } from 'lucide-react'
 import { useState } from 'react'
@@ -14,7 +14,7 @@ import { z } from 'zod'
 const paymentSchema = z.object({
   cardNumber: z.string().regex(/^\d{13,19}$/, 'Número do cartão inválido'),
   holderName: z.string().min(3, 'Nome deve ter pelo menos 3 caracteres'),
-  expiryDate: z.string().regex(/^\d{2}\/\d{2}$/, 'Formato inválido (MM/AA)'),
+  expiryDate: z.string().regex(/^(0[1-9]|1[0-2])\/\d{2}$/, 'Formato inválido (MM/AA)'),
   cvv: z.string().regex(/^\d{3,4}$/, 'CVV inválido'),
   phone: z.string().regex(/^\d{10,11}$/, 'Telefone deve ter 10 ou 11 dígitos'),
   postalCode: z.string().regex(/^\d{8}$/, 'CEP deve ter 8 dígitos'),
@@ -29,6 +29,7 @@ interface PaymentFormProps {
 }
 
 export function PaymentForm({ billingId, amount }: PaymentFormProps) {
+  const queryClient = useQueryClient()
   const [cardNumber, setCardNumber] = useState<string>()
   const [cvv, setCvv] = useState<string>()
   const [focused, setFocused] = useState<Focused>('')
@@ -62,6 +63,8 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
           address_number: data.addressNumber,
         }),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['billing', billingId] })
+      queryClient.invalidateQueries({ queryKey: ['billings'] })
       toast.success('Pagamento realizado com sucesso!')
     },
     onError: () => {

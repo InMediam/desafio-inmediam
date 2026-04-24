@@ -62,7 +62,7 @@ class BillingController
             $chargeResponse = Http::withHeaders(['access_token' => $apiKey])->post("$baseUrl/payments", [
                 'customer' => $customer->id,
                 'billingType' => 'CREDIT_CARD',
-                'value' => $request->amount,
+                'value' => $billing->amount,
                 'dueDate' => $billing->due_date,
             ]);
 
@@ -112,7 +112,7 @@ class BillingController
             $payment = Payment::create([
                 'billing_id' => $billing->id,
                 'credit_card_id' => $credit_card->id,
-                'amount_paid' => $request->amount,
+                'amount_paid' => $billing->amount,
                 'status' => $response->status,
                 'paid_at' => now(),
             ]);
