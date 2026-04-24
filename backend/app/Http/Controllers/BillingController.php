@@ -37,44 +37,48 @@ class BillingController
         $apiKey = config('services.asaas.key');
         $baseUrl = config('services.asaas.url');
 
-        $customer = Http::withHeaders(['access_token' => $apiKey])->post("$baseUrl/customers", [
-            'name' => $billing->customer->name,
-            'email' => $billing->customer->email,
-            'cpfCnpj' => $billing->customer->document,
-            'notificationDisabled' => true, // ATENÇÃO: Não recomendo modificar, pois o Asaas envia notificações mesmo no ambiente de sandbox.
-        ]);
-
-        $customer = (object) $customer->json();
-
-        $charge = Http::withHeaders(['access_token' => $apiKey])->post("$baseUrl/payments", [
-            'customer' => $customer->id,
-            'billingType' => 'CREDIT_CARD',
-            'value' => $request->amount,
-            'dueDate' => $billing->due_date,
-        ]);
-
-        $charge = (object) $charge->json();
-
-        $response = Http::withHeaders(['access_token' => $apiKey])->post("$baseUrl/payments/{$charge->id}/payWithCreditCard", [
-            'creditCard' => [
-                'holderName' => $request->card_holder_name,
-                'number' => $request->card_number,
-                'expiryMonth' => explode('/', $request->expiry_date)[0],
-                'expiryYear' => '20' . explode('/', $request->expiry_date)[1],
-                'ccv' => $request->cvv,
-            ],
-            'creditCardHolderInfo' => [
+        try {
+            $customer = Http::withHeaders(['access_token' => $apiKey])->post("$baseUrl/customers", [
                 'name' => $billing->customer->name,
                 'email' => $billing->customer->email,
                 'cpfCnpj' => $billing->customer->document,
-                'phone' => $request->phone,
-                'postalCode' => $request->postal_code,
-                'addressNumber' => $request->address_number,
-            ],
-            'remoteIp' => $request->ip(),
-        ]);
+                'notificationDisabled' => true, // ATENÇÃO: Não recomendo modificar, pois o Asaas envia notificações mesmo no ambiente de sandbox.
+            ]);
 
-        $response = (object) $response->json();
+            $customer = (object) $customer->json();
+
+            $charge = Http::withHeaders(['access_token' => $apiKey])->post("$baseUrl/payments", [
+                'customer' => $customer->id,
+                'billingType' => 'CREDIT_CARD',
+                'value' => $request->amount,
+                'dueDate' => $billing->due_date,
+            ]);
+
+            $charge = (object) $charge->json();
+
+            $response = Http::withHeaders(['access_token' => $apiKey])->post("$baseUrl/payments/{$charge->id}/payWithCreditCard", [
+                'creditCard' => [
+                    'holderName' => $request->card_holder_name,
+                    'number' => $request->card_number,
+                    'expiryMonth' => explode('/', $request->expiry_date)[0],
+                    'expiryYear' => '20' . explode('/', $request->expiry_date)[1],
+                    'ccv' => $request->cvv,
+                ],
+                'creditCardHolderInfo' => [
+                    'name' => $billing->customer->name,
+                    'email' => $billing->customer->email,
+                    'cpfCnpj' => $billing->customer->document,
+                    'phone' => $request->phone,
+                    'postalCode' => $request->postal_code,
+                    'addressNumber' => $request->address_number,
+                ],
+                'remoteIp' => $request->ip(),
+            ]);
+
+            $response = (object) $response->json();
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Falha na comunicação com o gateway de pagamento'], 502);
+        }
 
         $credit_card = CreditCard::create([
             'customer_id' => $billing->customer_id,
