@@ -30,6 +30,10 @@ class BillingController
             return response()->json(['error' => 'Cobrança não encontrada'], 404);
         }
 
+        if ($billing->status === 'paid') {
+            return response()->json(['error' => 'Cobrança já paga'], 422);
+        }
+
         $apiKey = config('services.asaas.key');
         $baseUrl = config('services.asaas.url');
 
