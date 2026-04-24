@@ -19,6 +19,9 @@ class PayBillingRequest extends FormRequest
             'expiry_date'      => ['required', 'string', 'regex:/^\d{2}\/\d{2}$/'],
             'cvv'              => ['required', 'string', 'digits_between:3,4'],
             'amount'           => ['required', 'numeric', 'min:0.01'],
+            'phone'            => ['required', 'string', 'digits_between:10,11'],
+            'postal_code'      => ['required', 'string', 'digits:8'],
+            'address_number'   => ['required', 'string', 'max:20'],
         ];
     }
 
@@ -36,6 +39,11 @@ class PayBillingRequest extends FormRequest
             'amount.required'           => 'O valor é obrigatório.',
             'amount.numeric'            => 'O valor deve ser numérico.',
             'amount.min'                => 'O valor deve ser maior que zero.',
+            'phone.required'            => 'O telefone é obrigatório.',
+            'phone.digits_between'      => 'O telefone deve ter entre 10 e 11 dígitos.',
+            'postal_code.required'      => 'O CEP é obrigatório.',
+            'postal_code.digits'        => 'O CEP deve ter 8 dígitos.',
+            'address_number.required'   => 'O número do endereço é obrigatório.',
         ];
     }
 }

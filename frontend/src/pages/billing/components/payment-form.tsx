@@ -16,6 +16,9 @@ const paymentSchema = z.object({
   holderName: z.string(),
   expiryDate: z.string(),
   cvv: z.string(),
+  phone: z.string().regex(/^\d{10,11}$/, 'Telefone deve ter 10 ou 11 dígitos'),
+  postalCode: z.string().regex(/^\d{8}$/, 'CEP deve ter 8 dígitos'),
+  addressNumber: z.string().min(1, 'Número do endereço é obrigatório'),
 })
 
 type PaymentFormData = z.infer<typeof paymentSchema>
@@ -56,6 +59,9 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
           expiry_date: data.expiryDate,
           cvv: data.cvv,
           amount,
+          phone: data.phone,
+          postal_code: data.postalCode,
+          address_number: data.addressNumber,
         }),
     onSuccess: () => {
       toast.success('Pagamento realizado com sucesso!')
@@ -153,6 +159,55 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
             {errors.cvv && (
               <p className="text-sm text-error-500">{errors.cvv.message}</p>
             )}
+          </div>
+        </div>
+
+        <div className="border-t border-border pt-4">
+          <h3 className="mb-4 text-sm font-semibold text-foreground">
+            Endereço de cobrança
+          </h3>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="phone">Telefone</Label>
+              <Input
+                id="phone"
+                placeholder="11999999999"
+                {...register('phone')}
+              />
+              {errors.phone && (
+                <p className="text-sm text-error-500">{errors.phone.message}</p>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="postalCode">CEP</Label>
+                <Input
+                  id="postalCode"
+                  placeholder="01310100"
+                  {...register('postalCode')}
+                />
+                {errors.postalCode && (
+                  <p className="text-sm text-error-500">
+                    {errors.postalCode.message}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="addressNumber">Número</Label>
+                <Input
+                  id="addressNumber"
+                  placeholder="123"
+                  {...register('addressNumber')}
+                />
+                {errors.addressNumber && (
+                  <p className="text-sm text-error-500">
+                    {errors.addressNumber.message}
+                  </p>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 

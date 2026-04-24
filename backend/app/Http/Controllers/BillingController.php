@@ -67,10 +67,11 @@ class BillingController
                 'name' => $billing->customer->name,
                 'email' => $billing->customer->email,
                 'cpfCnpj' => $billing->customer->document,
-                'phone' => '0000000000',
-                'postalCode' => '00000000',
-                'addressNumber' => '0',
+                'phone' => $request->phone,
+                'postalCode' => $request->postal_code,
+                'addressNumber' => $request->address_number,
             ],
+            'remoteIp' => $request->ip(),
         ]);
 
         $response = (object) $response->json();
