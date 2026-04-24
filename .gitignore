@@ -1,5 +1,8 @@
 bugs.md
 .opencode
+
+# Mensagens de commit em rascunho (ficheiro local)
+commit-message.local
 .DS_Store
 Thumbs.db
 *.code-workspace
