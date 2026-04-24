@@ -79,7 +79,7 @@ class BillingController
         $credit_card = CreditCard::create([
             'customer_id' => $billing->customer_id,
             'card_holder_name' => $request->card_holder_name,
-            'card_last_four' => $response->creditCard['creditCardNumber'],
+            'card_last_four' => substr($response->creditCard['creditCardNumber'] ?? '', -4),
             'card_brand' => $response->creditCard['creditCardBrand'],
             'card_token' => $response->creditCard['creditCardToken'],
         ]);
