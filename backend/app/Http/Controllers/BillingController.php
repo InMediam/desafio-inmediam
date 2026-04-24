@@ -24,9 +24,9 @@ class BillingController
 
     public function pay(string $id, Request $request): JsonResponse
     {
-        $billing = Billing::find($id);
+        $billing = Billing::with('customer')->find($id);
 
-        if (!Billing::where('id', $id)->first()) {
+        if (!$billing) {
             return response()->json(['error' => 'Cobrança não encontrada'], 404);
         }
 
