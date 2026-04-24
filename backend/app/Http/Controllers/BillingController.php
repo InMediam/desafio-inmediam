@@ -7,6 +7,7 @@ use App\Models\CreditCard;
 use App\Models\Payment;
 use Illuminate\Http\JsonResponse;
 use App\Http\Requests\PayBillingRequest;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 
 class BillingController
@@ -80,24 +81,28 @@ class BillingController
             return response()->json(['error' => 'Falha na comunicação com o gateway de pagamento'], 502);
         }
 
-        $credit_card = CreditCard::create([
-            'customer_id' => $billing->customer_id,
-            'card_holder_name' => $request->card_holder_name,
-            'card_last_four' => substr($response->creditCard['creditCardNumber'] ?? '', -4),
-            'card_brand' => $response->creditCard['creditCardBrand'],
-            'card_token' => $response->creditCard['creditCardToken'],
-        ]);
+        $payment = DB::transaction(function () use ($billing, $request, $response) {
+            $credit_card = CreditCard::create([
+                'customer_id' => $billing->customer_id,
+                'card_holder_name' => $request->card_holder_name,
+                'card_last_four' => substr($response->creditCard['creditCardNumber'] ?? '', -4),
+                'card_brand' => $response->creditCard['creditCardBrand'],
+                'card_token' => $response->creditCard['creditCardToken'],
+            ]);
 
-        $payment = Payment::create([
-            'billing_id' => $billing->id,
-            'credit_card_id' => $credit_card->id,
-            'amount_paid' => $request->amount,
-            'status' => $response->status,
-            'paid_at' => now(),
-        ]);
+            $payment = Payment::create([
+                'billing_id' => $billing->id,
+                'credit_card_id' => $credit_card->id,
+                'amount_paid' => $request->amount,
+                'status' => $response->status,
+                'paid_at' => now(),
+            ]);
 
-        $billing->status = 'paid';
-        $billing->save();
+            $billing->status = 'paid';
+            $billing->save();
+
+            return $payment;
+        });
 
         return response()->json($payment);
     }
