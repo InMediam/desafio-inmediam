@@ -8,6 +8,10 @@ export default defineConfig({
   resolve: {
     alias: [
       {
+        find: /^@inmediam\/ui$/,
+        replacement: path.resolve(__dirname, './src/lib/inmediam-ui.ts'),
+      },
+      {
         find: /^use-sync-external-store(\/.*)?$/,
         replacement: 'react',
       },

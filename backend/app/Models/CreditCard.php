@@ -6,7 +6,17 @@ use Illuminate\Database\Eloquent\Model;
 
 class CreditCard extends Model
 {
-    protected $guarded = [];
+    protected $fillable = [
+        'customer_id',
+        'card_holder_name',
+        'card_last_four',
+        'card_brand',
+        'card_token',
+    ];
+
+    protected $hidden = [
+        'card_token',
+    ];
 
     public function customer()
     {

@@ -2,7 +2,11 @@ node_modules
 dist
 dist-ssr
 *.local
-.env.local
+
+# Ambiente
+.env
+.env.*
+!.env.example
 
 # Editor
 .vscode/*
