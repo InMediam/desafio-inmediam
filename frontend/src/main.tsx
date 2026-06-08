@@ -1,4 +1,5 @@
 import './styles/index.css'
+import '../node_modules/@inmediam/ui/src/global.css'
 
 import { createRoot } from 'react-dom/client'
 
