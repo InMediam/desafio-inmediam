@@ -1,30 +1,38 @@
 import { Button } from '@inmediam/ui'
-import { isAxiosError } from 'axios'
-import { NavLink, useRouteError } from 'react-router-dom'
+import { isRouteErrorResponse, NavLink, useRouteError } from 'react-router-dom'
 
 import NotFoundImage from '../assets/not-found.svg'
 
-export function Error() {
-  const error = useRouteError() as Error
-  const axiosError = isAxiosError(error)
-  const errorMessage = axiosError
-    ? error?.response?.data.message
-    : error?.message || JSON.stringify(error)
+function getErrorMessage(error: unknown): string {
+  if (isRouteErrorResponse(error)) {
+    return `${error.status} ${error.statusText}`
+  }
+
+  if (error instanceof globalThis.Error) {
+    return error.message
+  }
+
+  return 'Não foi possível carregar a página.'
+}
+
+function ErrorPage() {
+  const error = useRouteError()
+  const errorMessage = getErrorMessage(error)
 
   return (
-    <div className="flex h-screen flex-col items-center justify-center gap-2 bg-background">
+    <div className="flex min-h-screen flex-col items-center justify-center gap-2 bg-background px-6 text-center">
       <img
         src={NotFoundImage}
         alt="Ilustração indicando página não encontrada"
-        className="mx-auto -mb-80 -mt-[19rem] w-[56rem]"
+        className="mx-auto w-full max-w-5xl"
       />
       <h1 className="text-4xl/10 font-bold text-gray-900 dark:text-gray-100">
         Whoops, algo aconteceu...
       </h1>
-      <p className="mt-4 max-w-3xl text-center text-lg/7 font-normal text-gray-600 dark:text-gray-200">
-        Um erro aconteceu na aplicação, abaixo você encontra mais detalhes:
+      <p className="mt-4 max-w-3xl text-lg/7 font-normal text-gray-600 dark:text-gray-200">
+        Um erro aconteceu na aplicação, abaixo você encontra mais detalhes.
       </p>
-      <pre className="mt-4 text-gray-900 data-[axios-error=true]:hidden dark:text-gray-100">
+      <pre className="mt-4 max-w-3xl whitespace-pre-wrap rounded-md bg-muted px-4 py-3 text-left text-sm text-gray-900 dark:text-gray-100">
         {errorMessage}
       </pre>
       <NavLink to="/" className="mt-4">
@@ -35,3 +43,5 @@ export function Error() {
     </div>
   )
 }
+
+export { ErrorPage as Error }

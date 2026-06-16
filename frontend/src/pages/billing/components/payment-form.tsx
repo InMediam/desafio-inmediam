@@ -2,8 +2,8 @@ import 'react-credit-cards-2/dist/es/styles-compiled.css'
 
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Button, Input, Label } from '@inmediam/ui'
-import { useMutation } from '@tanstack/react-query'
-import axios from 'axios'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { isAxiosError } from 'axios'
 import { Loader2 } from 'lucide-react'
 import { useState } from 'react'
 import Cards, { Focused } from 'react-credit-cards-2'
@@ -11,76 +11,94 @@ import { useForm } from 'react-hook-form'
 import { toast } from 'sonner'
 import { z } from 'zod'
 
-const paymentSchema = z.object({
-  cardNumber: z.string(),
-  holderName: z.string(),
-  expiryDate: z.string(),
-  cvv: z.string(),
-})
+import { api } from '@/lib/api'
+import type { PaymentFormValues } from '@/types/billing'
 
-type PaymentFormData = z.infer<typeof paymentSchema>
+const paymentSchema = z.object({
+  cardNumber: z.string().refine((value) => {
+    const digitsOnly = value.replace(/\D+/g, '')
+    return digitsOnly.length >= 13 && digitsOnly.length <= 19
+  }, 'Informe um número de cartão válido.'),
+  holderName: z
+    .string()
+    .trim()
+    .min(3, 'Informe o nome do titular.')
+    .max(255, 'Informe um nome de titular válido.'),
+  expiryDate: z
+    .string()
+    .regex(/^(0[1-9]|1[0-2])\/\d{2}$/, 'Use o formato MM/AA.'),
+  cvv: z.string().regex(/^\d{3,4}$/, 'Informe um CVV válido.'),
+})
 
 interface PaymentFormProps {
   billingId: string
-  amount: number
 }
 
-export function PaymentForm({ billingId, amount }: PaymentFormProps) {
-  const [cardNumber, setCardNumber] = useState<string>()
-  const [cvv, setCvv] = useState<string>()
+export function PaymentForm({ billingId }: PaymentFormProps) {
+  const queryClient = useQueryClient()
   const [focused, setFocused] = useState<Focused>('')
-
   const {
     register,
     handleSubmit,
     watch,
     formState: { errors },
-  } = useForm<PaymentFormData>({
+  } = useForm<PaymentFormValues>({
     resolver: zodResolver(paymentSchema),
+    defaultValues: {
+      cardNumber: '',
+      holderName: '',
+      expiryDate: '',
+      cvv: '',
+    },
   })
 
-  const watchedValues = {
-    cardNumber: watch('cardNumber', ''),
-    holderName: watch('holderName', ''),
-    expiryDate: watch('expiryDate', ''),
-    cvv: watch('cvv', ''),
-  }
+  const watchedValues = watch()
+
+  const cardNumberField = register('cardNumber')
+  const holderNameField = register('holderName')
+  const expiryDateField = register('expiryDate')
+  const cvvField = register('cvv')
 
   const { mutateAsync: submitPayment, isPending } = useMutation({
-    mutationFn: (data: PaymentFormData) =>
-      axios
-        .create()
-        .post(`http://localhost:8000/api/billing/${billingId}/pay`, {
-          card_number: data.cardNumber,
-          card_holder_name: data.holderName,
-          expiry_date: data.expiryDate,
-          cvv: data.cvv,
-          amount,
-        }),
-    onSuccess: () => {
+    mutationFn: async (data: PaymentFormValues) =>
+      api.post(`/billing/${billingId}/pay`, {
+        card_number: data.cardNumber.replace(/\D+/g, ''),
+        card_holder_name: data.holderName,
+        expiry_date: data.expiryDate,
+        cvv: data.cvv.replace(/\D+/g, ''),
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['billing', billingId],
+      })
+
       toast.success('Pagamento realizado com sucesso!')
     },
-    onError: () => {
-      toast.success('Dados salvos com sucesso!')
+    onError: (error) => {
+      const message = isAxiosError(error)
+        ? (error.response?.data?.message as string | undefined)
+        : undefined
+
+      toast.error(message || 'Não foi possível processar o pagamento.')
     },
   })
 
-  function handlePayment(data: PaymentFormData) {
-    submitPayment(data)
+  function handlePayment(data: PaymentFormValues) {
+    return submitPayment(data)
   }
 
   return (
-    <div className="w-full rounded-lg border border-border bg-card p-6 shadow-sm">
+    <div className="w-full rounded-lg border border-border bg-card p-6 shadow-sm lg:max-w-xl">
       <h2 className="mb-6 text-lg font-semibold text-foreground">
         Dados do cartão
       </h2>
 
       <div className="mb-6">
         <Cards
-          number={cardNumber || watchedValues.cardNumber || ''}
+          number={watchedValues.cardNumber}
           name={watchedValues.holderName}
           expiry={watchedValues.expiryDate}
-          cvc={cvv || watchedValues.cvv || ''}
+          cvc={watchedValues.cvv}
           focused={focused}
         />
       </div>
@@ -90,13 +108,10 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
           <Label htmlFor="cardNumber">Número do cartão</Label>
           <Input
             id="cardNumber"
+            inputMode="numeric"
+            autoComplete="cc-number"
             placeholder="0000 0000 0000 0000"
-            value={cardNumber}
-            {...register('cardNumber')}
-            onChange={(e) => {
-              setCardNumber(e.target.value)
-              register('cardNumber').onChange(e)
-            }}
+            {...cardNumberField}
             onFocus={() => setFocused('number')}
           />
           {errors.cardNumber && (
@@ -110,8 +125,9 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
           <Label htmlFor="holderName">Nome do titular</Label>
           <Input
             id="holderName"
+            autoComplete="cc-name"
             placeholder="JOÃO M A SILVA"
-            {...register('holderName')}
+            {...holderNameField}
             onFocus={() => setFocused('name')}
           />
           {errors.holderName && (
@@ -126,8 +142,9 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
             <Label htmlFor="expiryDate">Validade</Label>
             <Input
               id="expiryDate"
+              autoComplete="cc-exp"
               placeholder="MM/AA"
-              {...register('expiryDate')}
+              {...expiryDateField}
               onFocus={() => setFocused('expiry')}
             />
             {errors.expiryDate && (
@@ -141,13 +158,10 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
             <Label htmlFor="cvv">CVV</Label>
             <Input
               id="cvv"
+              inputMode="numeric"
+              autoComplete="cc-csc"
               placeholder="123"
-              value={cvv}
-              {...register('cvv')}
-              onChange={(e) => {
-                setCvv(e.target.value)
-                register('cvv').onChange(e)
-              }}
+              {...cvvField}
               onFocus={() => setFocused('cvc')}
             />
             {errors.cvv && (
