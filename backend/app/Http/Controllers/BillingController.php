@@ -2,94 +2,122 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\PayBillingRequest;
 use App\Models\Billing;
 use App\Models\CreditCard;
 use App\Models\Payment;
+use App\Services\AsaasService;
+use DomainException;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\DB;
+use RuntimeException;
+use Throwable;
 
 class BillingController
 {
-    public function show(string $id): JsonResponse
-    {
-        $billing = Billing::with(['plan', 'payments.creditCard'])->find($id);
+    private AsaasService $asaasService;
 
-        if (!$billing) {
-            return response()->json(['error' => 'Cobrança não encontrada'], 404);
-        }
+    public function __construct(AsaasService $asaasService)
+    {
+        $this->asaasService = $asaasService;
+    }
+
+    public function show(Billing $billing): JsonResponse
+    {
+        $billing->load([
+            'plan',
+            'payments' => fn ($query) => $query->latest('id'),
+            'payments.creditCard',
+        ]);
 
         return response()->json($billing);
     }
 
-    public function pay(string $id, Request $request): JsonResponse
+    public function pay(PayBillingRequest $request, Billing $billing): JsonResponse
     {
-        $billing = Billing::find($id);
+        $billing->loadMissing('customer');
 
-        if (!Billing::where('id', $id)->first()) {
-            return response()->json(['error' => 'Cobrança não encontrada'], 404);
+        if ($billing->status !== 'pending') {
+            return response()->json([
+                'message' => 'Esta cobrança já foi processada.',
+            ], 409);
         }
 
-        $apiKey = '$aact_YourSandboxKeyHere';
-        $baseUrl = "https://sandbox.asaas.com/api/v3";
+        try {
+            $this->markAsProcessing($billing);
 
-        $customer = Http::withHeaders(['access_token' => $apiKey])->post("$baseUrl/customers", [
-            'name' => $billing->customer->name,
-            'email' => $billing->customer->email,
-            'cpfCnpj' => $billing->customer->document,
-            'notificationDisabled' => true, // ATENÇÃO: Não recomendo modificar, pois o Asaas envia notificações mesmo no ambiente de sandbox.
-        ]);
+            $processedPayment = $this->persistPayment(
+                billing: $billing,
+                asaasPayment: $this->asaasService->collectCreditCardPayment($billing->fresh(['customer']), $request->validated()),
+                paymentData: $request->validated(),
+            );
 
-        $customer = (object) $customer->json();
+            return response()->json($processedPayment, 201);
+        } catch (DomainException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+            ], 409);
+        } catch (Throwable $throwable) {
+            $this->markAsPending($billing);
+            report($throwable);
 
-        $charge = Http::withHeaders(['access_token' => $apiKey])->post("$baseUrl/payments", [
-            'customer' => $customer->id,
-            'billingType' => 'CREDIT_CARD',
-            'value' => $request->amount,
-            'dueDate' => $billing->due_date,
-        ]);
+            return response()->json([
+                'message' => 'Não foi possível processar o pagamento. Tente novamente em instantes.',
+            ], 502);
+        }
+    }
 
-        $charge = (object) $charge->json();
+    private function markAsProcessing(Billing $billing): void
+    {
+        DB::transaction(function () use ($billing): void {
+            $lockedBilling = Billing::query()->whereKey($billing->id)->lockForUpdate()->firstOrFail();
 
-        $response = Http::withHeaders(['access_token' => $apiKey])->post("$baseUrl/payments/{$charge->id}/payWithCreditCard", [
-            'creditCard' => [
-                'holderName' => $request->card_holder_name,
-                'number' => $request->card_number,
-                'expiryMonth' => explode('/', $request->expiry_date)[0],
-                'expiryYear' => '20' . explode('/', $request->expiry_date)[1],
-                'ccv' => $request->cvv,
-            ],
-            'creditCardHolderInfo' => [
-                'name' => $billing->customer->name,
-                'email' => $billing->customer->email,
-                'cpfCnpj' => $billing->customer->document,
-                'phone' => '0000000000',
-                'postalCode' => '00000000',
-                'addressNumber' => '0',
-            ],
-        ]);
+            if ($lockedBilling->status !== 'pending') {
+                throw new DomainException('Esta cobrança já foi processada.');
+            }
 
-        $response = (object) $response->json();
+            $lockedBilling->update(['status' => 'processing']);
+        });
+    }
 
-        $credit_card = CreditCard::create([
-            'customer_id' => $billing->customer_id,
-            'card_holder_name' => $request->card_holder_name,
-            'card_last_four' => $response->creditCard['creditCardNumber'],
-            'card_brand' => $response->creditCard['creditCardBrand'],
-            'card_token' => $response->creditCard['creditCardToken'],
-        ]);
+    private function markAsPending(Billing $billing): void
+    {
+        Billing::query()
+            ->whereKey($billing->id)
+            ->where('status', 'processing')
+            ->update(['status' => 'pending']);
+    }
 
-        $payment = Payment::create([
-            'billing_id' => $billing->id,
-            'credit_card_id' => $credit_card->id,
-            'amount_paid' => $request->amount,
-            'status' => $response->status,
-            'paid_at' => now(),
-        ]);
+    private function persistPayment(Billing $billing, array $asaasPayment, array $paymentData): Payment
+    {
+        return DB::transaction(function () use ($billing, $asaasPayment, $paymentData): Payment {
+            $lockedBilling = Billing::query()->whereKey($billing->id)->lockForUpdate()->firstOrFail();
 
-        $billing->status = 'paid';
-        $billing->save();
+            if ($lockedBilling->status === 'paid') {
+                throw new DomainException('Esta cobrança já foi processada.');
+            }
 
-        return response()->json($payment);
+            $lastFour = substr($paymentData['card_number'], -4);
+
+            $creditCard = CreditCard::create([
+                'customer_id' => $lockedBilling->customer_id,
+                'card_holder_name' => $paymentData['card_holder_name'],
+                'card_last_four' => $lastFour,
+                'card_brand' => $asaasPayment['card_brand'],
+                'card_token' => $asaasPayment['card_token'],
+            ]);
+
+            $payment = Payment::create([
+                'billing_id' => $lockedBilling->id,
+                'credit_card_id' => $creditCard->id,
+                'amount_paid' => $lockedBilling->amount,
+                'status' => $asaasPayment['status'],
+                'paid_at' => now(),
+            ]);
+
+            $lockedBilling->update(['status' => 'paid']);
+
+            return $payment->load('creditCard');
+        });
     }
 }
