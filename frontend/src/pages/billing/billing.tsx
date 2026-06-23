@@ -1,11 +1,12 @@
 import { Badge } from '@inmediam/ui'
 import { useQuery } from '@tanstack/react-query'
-import axios from 'axios'
 import { useParams } from 'react-router-dom'
+import { Loader2 } from 'lucide-react'
 
 import InMediamShield from '@/assets/inmediam-shield.svg'
 import MediamLogo from '@/assets/mediam.svg'
 import { currencyFormatter } from '@/utils/formatter'
+import { api } from '@/lib/axios'
 
 import { PaymentConcluded } from './components/payment-concluded'
 import { PaymentForm } from './components/payment-form'
@@ -13,15 +14,34 @@ import { PaymentForm } from './components/payment-form'
 export function Billing() {
   const { id } = useParams<{ id: string }>()
 
-  const { data } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ['billing', id],
     queryFn: async () => {
-      const response = await axios
-        .create()
-        .get(`http://localhost:8000/api/billing/${id}`)
+      // Utilizando a instância global do axios
+      const response = await api.get(`/billing/${id}`)
       return response.data
     },
   })
+
+  // 1. Tratamento de Estado: Loading
+  if (isLoading) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-muted">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
+  }
+
+  // 2. Tratamento de Estado: Erro (Ex: Cobrança não encontrada 404)
+  if (isError || !data) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-muted">
+        <p className="text-lg font-semibold text-error-500">
+          Não foi possível carregar a cobrança.
+        </p>
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-screen w-full flex-row items-start gap-8 bg-muted px-20 py-20">
@@ -73,11 +93,12 @@ export function Billing() {
         </div>
       </div>
 
-      {data && data.status === 'pending' && (
-        <PaymentForm billingId={id!} amount={data?.amount} />
+      {/* Como removemos o 'amount' das props, passamos apenas o ID */}
+      {data.status === 'pending' && (
+        <PaymentForm billingId={id!} />
       )}
 
-      {data && data.status === 'paid' && data.payments?.[0] && (
+      {data.status === 'paid' && data.payments?.[0] && (
         <PaymentConcluded payment={data.payments[0]} />
       )}
     </div>

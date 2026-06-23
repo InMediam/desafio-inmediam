@@ -1,10 +1,34 @@
 import { Badge } from '@inmediam/ui'
 import { Link } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import { Loader2 } from 'lucide-react'
 
 import InMediamShield from '@/assets/inmediam-shield.svg'
 import MediamLogo from '@/assets/mediam.svg'
+import { api } from '@/lib/axios' 
+
+// Definimos uma tipagem básica para o retorno da API
+interface BillingItem {
+  id: number
+  status: string
+  customer: {
+    name: string
+  }
+  plan: {
+    name: string
+  }
+}
 
 export function Home() {
+  // Buscamos as cobranças usando React Query para garantir o cache e a reatividade
+  const { data: billings, isLoading, isError } = useQuery<BillingItem[]>({
+    queryKey: ['billings'],
+    queryFn: async () => {
+      const response = await api.get('/billings')
+      return response.data
+    },
+  })
+
   return (
     <div className="max- mx-auto flex min-h-screen w-full flex-col items-center justify-center gap-8 bg-muted p-6">
       <div className="w-1/3 rounded-lg border border-border bg-card p-6 shadow-sm">
@@ -21,33 +45,53 @@ export function Home() {
           Pagamento de assinaturas
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Selecione uma cobrança para visualizar os detalhes e realizar o
-          pagamento.
+          Selecione uma cobrança para visualizar os detalhes e realizar o pagamento.
         </p>
 
-        <div className="mt-6 space-y-3">
-          <Link
-            to="/billing/1"
-            className="flex items-center justify-between rounded-md border border-border p-4 transition-colors hover:bg-muted"
-          >
-            <div>
-              <p className="font-semibold text-foreground">Profissional</p>
-              <p className="text-sm text-muted-foreground">João da Silva</p>
-            </div>
-            <Badge variant="warning">Pendente</Badge>
-          </Link>
+        {/* Estado de Carregamento */}
+        {isLoading && (
+          <div className="flex justify-center py-8">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          </div>
+        )}
 
-          <Link
-            to="/billing/2"
-            className="flex items-center justify-between rounded-md border border-border p-4 transition-colors hover:bg-muted"
-          >
-            <div>
-              <p className="font-semibold text-foreground">Básico</p>
-              <p className="text-sm text-muted-foreground">Maria Oliveira</p>
-            </div>
-            <Badge variant="success">Pago</Badge>
-          </Link>
-        </div>
+        {/* Estado de Erro */}
+        {isError && (
+          <div className="rounded-md bg-error-50 p-4 text-center text-sm text-error-500">
+            Não foi possível carregar as cobranças. Tente novamente mais tarde.
+          </div>
+        )}
+
+        {/* Lista Dinâmica de Cobranças */}
+        {!isLoading && !isError && billings && (
+          <div className="space-y-3">
+            {billings.length === 0 ? (
+              <p className="text-center text-sm text-muted-foreground">
+                Nenhuma cobrança encontrada.
+              </p>
+            ) : (
+              billings.map((billing) => (
+                <Link
+                  key={billing.id}
+                  to={`/billing/${billing.id}`}
+                  className="flex items-center justify-between rounded-md border border-border p-4 transition-colors hover:bg-muted"
+                >
+                  <div>
+                    <p className="font-semibold text-foreground">
+                      {billing.plan.name}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {billing.customer.name}
+                    </p>
+                  </div>
+                  <Badge variant={billing.status === 'paid' ? 'success' : 'warning'}>
+                    {billing.status === 'paid' ? 'Pago' : 'Pendente'}
+                  </Badge>
+                </Link>
+              ))
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
