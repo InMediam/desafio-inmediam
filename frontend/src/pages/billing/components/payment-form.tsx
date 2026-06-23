@@ -2,66 +2,65 @@ import 'react-credit-cards-2/dist/es/styles-compiled.css'
 
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Button, Input, Label } from '@inmediam/ui'
-import { useMutation } from '@tanstack/react-query'
-import axios from 'axios'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
 import { useState } from 'react'
 import Cards, { Focused } from 'react-credit-cards-2'
 import { useForm } from 'react-hook-form'
 import { toast } from 'sonner'
 import { z } from 'zod'
+import { api } from '@/lib/axios'
 
 const paymentSchema = z.object({
-  cardNumber: z.string(),
-  holderName: z.string(),
-  expiryDate: z.string(),
-  cvv: z.string(),
+  cardNumber: z.string().regex(/^\d{16}$/, 'O cartão deve ter 16 dígitos numéricos.'),
+  holderName: z.string().min(3, 'Nome inválido.'),
+  expiryDate: z.string().regex(/^(0[1-9]|1[0-2])\/\d{2}$/, 'Formato inválido. Use MM/AA.'),
+  cvv: z.string().regex(/^\d{3}$/, 'O CVV deve ter 3 dígitos.'),
 })
 
 type PaymentFormData = z.infer<typeof paymentSchema>
 
 interface PaymentFormProps {
   billingId: string
-  amount: number
-}
+} // Removido o 'amount' das props, pois o frontend não deve mandar isso
 
-export function PaymentForm({ billingId, amount }: PaymentFormProps) {
-  const [cardNumber, setCardNumber] = useState<string>()
-  const [cvv, setCvv] = useState<string>()
+export function PaymentForm({ billingId }: PaymentFormProps) {
+  const queryClient = useQueryClient()
   const [focused, setFocused] = useState<Focused>('')
 
   const {
     register,
     handleSubmit,
     watch,
+    reset,
     formState: { errors },
   } = useForm<PaymentFormData>({
     resolver: zodResolver(paymentSchema),
   })
 
-  const watchedValues = {
-    cardNumber: watch('cardNumber', ''),
-    holderName: watch('holderName', ''),
-    expiryDate: watch('expiryDate', ''),
-    cvv: watch('cvv', ''),
-  }
+  const watchedValues = watch()
 
   const { mutateAsync: submitPayment, isPending } = useMutation({
-    mutationFn: (data: PaymentFormData) =>
-      axios
-        .create()
-        .post(`http://localhost:8000/api/billing/${billingId}/pay`, {
-          card_number: data.cardNumber,
-          card_holder_name: data.holderName,
-          expiry_date: data.expiryDate,
-          cvv: data.cvv,
-          amount,
-        }),
-    onSuccess: () => {
-      toast.success('Pagamento realizado com sucesso!')
+    mutationFn: async (data: PaymentFormData) => {
+      // Usando a instância global do axios e removendo o 'amount' do payload
+      const response = await api.post(`/billing/${billingId}/pay`, {
+        card_number: data.cardNumber,
+        card_holder_name: data.holderName,
+        expiry_date: data.expiryDate,
+        cvv: data.cvv,
+      })
+      return response.data
     },
-    onError: () => {
-      toast.success('Dados salvos com sucesso!')
+    onSuccess: () => {
+      toast.success('Pagamento aprovado com sucesso!')
+      reset() // Limpa o formulário
+      // 3. Invalidação de Cache:
+      queryClient.invalidateQueries({ queryKey: ['billing', billingId] })
+    },
+    onError: (error: any) => {
+      // 4. Correção do Falso Positivo
+      const errorMessage = error.response?.data?.error || 'Erro ao processar o pagamento.'
+      toast.error(errorMessage)
     },
   })
 
@@ -77,33 +76,25 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
 
       <div className="mb-6">
         <Cards
-          number={cardNumber || watchedValues.cardNumber || ''}
-          name={watchedValues.holderName}
-          expiry={watchedValues.expiryDate}
-          cvc={cvv || watchedValues.cvv || ''}
+          number={watchedValues.cardNumber || ''}
+          name={watchedValues.holderName || ''}
+          expiry={watchedValues.expiryDate || ''}
+          cvc={watchedValues.cvv || ''}
           focused={focused}
         />
       </div>
 
       <form onSubmit={handleSubmit(handlePayment)} className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="cardNumber">Número do cartão</Label>
+          <Label htmlFor="cardNumber">Número do cartão (Apenas números)</Label>
           <Input
             id="cardNumber"
-            placeholder="0000 0000 0000 0000"
-            value={cardNumber}
+            maxLength={16}
+            placeholder="0000000000000000"
             {...register('cardNumber')}
-            onChange={(e) => {
-              setCardNumber(e.target.value)
-              register('cardNumber').onChange(e)
-            }}
             onFocus={() => setFocused('number')}
           />
-          {errors.cardNumber && (
-            <p className="text-sm text-error-500">
-              {errors.cardNumber.message}
-            </p>
-          )}
+          {errors.cardNumber && <p className="text-sm text-error-500">{errors.cardNumber.message}</p>}
         </div>
 
         <div className="space-y-2">
@@ -114,27 +105,19 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
             {...register('holderName')}
             onFocus={() => setFocused('name')}
           />
-          {errors.holderName && (
-            <p className="text-sm text-error-500">
-              {errors.holderName.message}
-            </p>
-          )}
+          {errors.holderName && <p className="text-sm text-error-500">{errors.holderName.message}</p>}
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label htmlFor="expiryDate">Validade</Label>
+            <Label htmlFor="expiryDate">Validade (MM/AA)</Label>
             <Input
               id="expiryDate"
-              placeholder="MM/AA"
+              placeholder="12/29"
               {...register('expiryDate')}
               onFocus={() => setFocused('expiry')}
             />
-            {errors.expiryDate && (
-              <p className="text-sm text-error-500">
-                {errors.expiryDate.message}
-              </p>
-            )}
+            {errors.expiryDate && <p className="text-sm text-error-500">{errors.expiryDate.message}</p>}
           </div>
 
           <div className="space-y-2">
@@ -142,17 +125,10 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
             <Input
               id="cvv"
               placeholder="123"
-              value={cvv}
               {...register('cvv')}
-              onChange={(e) => {
-                setCvv(e.target.value)
-                register('cvv').onChange(e)
-              }}
               onFocus={() => setFocused('cvc')}
             />
-            {errors.cvv && (
-              <p className="text-sm text-error-500">{errors.cvv.message}</p>
-            )}
+            {errors.cvv && <p className="text-sm text-error-500">{errors.cvv.message}</p>}
           </div>
         </div>
 
