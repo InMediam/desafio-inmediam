@@ -34,5 +34,9 @@ return [
             'channel' => env('SLACK_BOT_USER_DEFAULT_CHANNEL'),
         ],
     ],
+    'asaas' => [
+        'base_url' => env('ASAAS_BASE_URL', 'https://api-sandbox.asaas.com'),
+        'api_key' => env('ASAAS_API_KEY'),
+    ],
 
 ];

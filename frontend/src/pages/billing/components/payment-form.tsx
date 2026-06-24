@@ -11,11 +11,27 @@ import { useForm } from 'react-hook-form'
 import { toast } from 'sonner'
 import { z } from 'zod'
 
+import { api } from '@/lib/api'
+
 const paymentSchema = z.object({
-  cardNumber: z.string(),
-  holderName: z.string(),
-  expiryDate: z.string(),
-  cvv: z.string(),
+  cardNumber: z
+    .string()
+    .regex(/^\d{16}$/, 'Cartão inválido'),
+
+  holderName: z
+    .string()
+    .min(3, 'Nome inválido'),
+
+  expiryDate: z
+    .string()
+    .regex(
+      /^(0[1-9]|1[0-2])\/\d{2}$/,
+      'Data inválida (MM/AA)'
+    ),
+
+  cvv: z
+    .string()
+    .regex(/^\d{3,4}$/, 'CVV inválido'),
 })
 
 type PaymentFormData = z.infer<typeof paymentSchema>
@@ -26,8 +42,6 @@ interface PaymentFormProps {
 }
 
 export function PaymentForm({ billingId, amount }: PaymentFormProps) {
-  const [cardNumber, setCardNumber] = useState<string>()
-  const [cvv, setCvv] = useState<string>()
   const [focused, setFocused] = useState<Focused>('')
 
   const {
@@ -48,20 +62,18 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
 
   const { mutateAsync: submitPayment, isPending } = useMutation({
     mutationFn: (data: PaymentFormData) =>
-      axios
-        .create()
-        .post(`http://localhost:8000/api/billing/${billingId}/pay`, {
-          card_number: data.cardNumber,
-          card_holder_name: data.holderName,
-          expiry_date: data.expiryDate,
-          cvv: data.cvv,
-          amount,
-        }),
+      api.post(`/billing/${billingId}/pay`, {
+        card_number: data.cardNumber,
+        card_holder_name: data.holderName,
+        expiry_date: data.expiryDate,
+        cvv: data.cvv,
+        amount,
+      }),
     onSuccess: () => {
       toast.success('Pagamento realizado com sucesso!')
     },
     onError: () => {
-      toast.success('Dados salvos com sucesso!')
+      toast.error('Erro ao processar pagamento')
     },
   })
 
@@ -77,10 +89,10 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
 
       <div className="mb-6">
         <Cards
-          number={cardNumber || watchedValues.cardNumber || ''}
+          number={watchedValues.cardNumber}
           name={watchedValues.holderName}
           expiry={watchedValues.expiryDate}
-          cvc={cvv || watchedValues.cvv || ''}
+          cvc={watchedValues.cvv}
           focused={focused}
         />
       </div>
@@ -91,12 +103,7 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
           <Input
             id="cardNumber"
             placeholder="0000 0000 0000 0000"
-            value={cardNumber}
             {...register('cardNumber')}
-            onChange={(e) => {
-              setCardNumber(e.target.value)
-              register('cardNumber').onChange(e)
-            }}
             onFocus={() => setFocused('number')}
           />
           {errors.cardNumber && (
@@ -142,12 +149,7 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
             <Input
               id="cvv"
               placeholder="123"
-              value={cvv}
               {...register('cvv')}
-              onChange={(e) => {
-                setCvv(e.target.value)
-                register('cvv').onChange(e)
-              }}
               onFocus={() => setFocused('cvc')}
             />
             {errors.cvv && (

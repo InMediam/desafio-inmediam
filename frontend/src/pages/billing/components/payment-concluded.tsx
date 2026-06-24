@@ -2,7 +2,6 @@ import 'react-credit-cards-2/dist/es/styles-compiled.css'
 
 import { Badge } from '@inmediam/ui'
 import { CircleCheck } from 'lucide-react'
-import Cards from 'react-credit-cards-2'
 
 import { currencyFormatter } from '@/utils/formatter'
 
@@ -16,7 +15,7 @@ interface Payment {
   amount_paid: number
   status: string
   paid_at: string
-  credit_card: PaymentCreditCard
+  credit_card: PaymentCreditCard | null
 }
 
 interface PaymentConcludedProps {
@@ -25,6 +24,14 @@ interface PaymentConcludedProps {
 
 export function PaymentConcluded({ payment }: PaymentConcludedProps) {
   const { credit_card: creditCard } = payment
+
+  if (!creditCard) {
+    return (
+      <div className="w-full rounded-lg border border-border bg-card p-6 text-sm text-muted-foreground">
+        Pagamento confirmado, mas sem dados do cartão.
+      </div>
+    )
+  }
 
   return (
     <div className="w-full rounded-lg border border-border bg-card p-6 shadow-sm">
@@ -39,7 +46,7 @@ export function PaymentConcluded({ payment }: PaymentConcludedProps) {
         <div className="flex items-center justify-between">
           <span className="text-sm text-muted-foreground">Titular</span>
           <span className="font-medium text-foreground">
-            {creditCard.card_holder_name}
+            {creditCard?.card_holder_name}
           </span>
         </div>
 
@@ -60,13 +67,19 @@ export function PaymentConcluded({ payment }: PaymentConcludedProps) {
         <div className="flex items-center justify-between">
           <span className="text-sm text-muted-foreground">Data</span>
           <span className="text-sm text-foreground">
-            {payment.paid_at}
+            {payment.paid_at
+              ? new Date(payment.paid_at).toLocaleString('pt-BR')
+              : '-'}
           </span>
         </div>
 
         <div className="flex items-center justify-between">
           <span className="text-sm text-muted-foreground">Status</span>
-          <Badge variant="success">Confirmado</Badge>
+          <Badge
+            variant={payment.status === 'paid' ? 'success' : 'warning'}
+          >
+            {payment.status === 'paid' ? 'Confirmado' : 'Pendente'}
+          </Badge>
         </div>
       </div>
     </div>
