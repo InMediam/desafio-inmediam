@@ -10,15 +10,15 @@ import { currencyFormatter } from '@/utils/formatter'
 import { PaymentConcluded } from './components/payment-concluded'
 import { PaymentForm } from './components/payment-form'
 
+import { api } from '@/lib/api'
+
 export function Billing() {
   const { id } = useParams<{ id: string }>()
 
   const { data } = useQuery({
     queryKey: ['billing', id],
     queryFn: async () => {
-      const response = await axios
-        .create()
-        .get(`http://localhost:8000/api/billing/${id}`)
+      const response = await api.get(`/billing/${id}`)
       return response.data
     },
   })
@@ -53,7 +53,7 @@ export function Billing() {
           <div className="flex items-center justify-between border-t border-border pt-4">
             <span className="text-sm text-muted-foreground">Valor</span>
             <span className="font-bold text-foreground">
-              {currencyFormatter.format(data?.amount)}
+              {currencyFormatter.format(data?.amount ?? 0)}
             </span>
           </div>
 
