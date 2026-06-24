@@ -2,23 +2,32 @@
 
 namespace App\Models;
 
+use App\Enums\BillingStatus;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Billing extends Model
 {
-    protected $guarded = [];
+    use HasFactory;
+    protected $fillable = ['plan_id', 'customer_id', 'amount', 'status', 'due_date'];
 
-    public function plan()
+    protected $casts = [
+        'status' => BillingStatus::class,
+    ];
+
+    public function plan(): BelongsTo
     {
         return $this->belongsTo(Plan::class);
     }
 
-    public function customer()
+    public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class);
     }
 
-    public function payments()
+    public function payments(): HasMany
     {
         return $this->hasMany(Payment::class);
     }

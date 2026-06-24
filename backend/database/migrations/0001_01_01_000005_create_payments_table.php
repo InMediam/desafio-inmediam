@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::create('payments', function (Blueprint $table) {
             $table->id();
             $table->foreignId('billing_id')->constrained('billings')->onDelete('cascade');
-            $table->foreignId('credit_card_id')->constrained('credit_cards')->onDelete('cascade');
+            $table->foreignId('credit_card_id')->nullable()->constrained('credit_cards')->onDelete('cascade');
             $table->decimal('amount_paid', 10, 2);
             $table->string('status')->default('approved');
             $table->timestamp('paid_at')->nullable();

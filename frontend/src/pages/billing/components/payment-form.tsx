@@ -2,8 +2,7 @@ import 'react-credit-cards-2/dist/es/styles-compiled.css'
 
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Button, Input, Label } from '@inmediam/ui'
-import { useMutation } from '@tanstack/react-query'
-import axios from 'axios'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
 import { useState } from 'react'
 import Cards, { Focused } from 'react-credit-cards-2'
@@ -11,32 +10,81 @@ import { useForm } from 'react-hook-form'
 import { toast } from 'sonner'
 import { z } from 'zod'
 
+import { api } from '@/lib/api'
+import type { CepStatus } from '@/lib/cep'
+
+import { BillingAddressForm } from './billing-address-form'
+
 const paymentSchema = z.object({
-  cardNumber: z.string(),
-  holderName: z.string(),
-  expiryDate: z.string(),
-  cvv: z.string(),
+  cardNumber: z
+    .string()
+    .regex(/^\d{16}$/, 'O cartão deve ter 16 dígitos numéricos.'),
+  holderName: z.string().min(3, 'Nome inválido.'),
+  expiryDate: z
+    .string()
+    .regex(/^(0[1-9]|1[0-2])\/\d{2}$/, 'Formato inválido. Use MM/AA.'),
+  cvv: z.string().regex(/^\d{3}$/, 'O CVV deve ter 3 dígitos.'),
+  phone: z.string().min(1, 'O telefone é obrigatório.'),
+  postalCode: z.string().min(1, 'O CEP é obrigatório.'),
+  addressNumber: z.string().min(1, 'O número do endereço é obrigatório.'),
 })
 
 type PaymentFormData = z.infer<typeof paymentSchema>
 
 interface PaymentFormProps {
   billingId: string
-  amount: number
 }
 
-export function PaymentForm({ billingId, amount }: PaymentFormProps) {
-  const [cardNumber, setCardNumber] = useState<string>()
-  const [cvv, setCvv] = useState<string>()
+function formatCardNumber(value: string) {
+  const digits = value.replace(/\D/g, '').slice(0, 16)
+  return digits.replace(/(\d{4})(?=\d)/g, '$1 ')
+}
+
+function formatExpiryDate(value: string) {
+  const digits = value.replace(/\D/g, '').slice(0, 4)
+
+  if (digits.length === 0) return ''
+
+  if (digits.length === 1) {
+    const d = parseInt(digits[0], 10)
+    if (d > 1) return '0' + digits[0] + '/'
+    return digits
+  }
+
+  let month = parseInt(digits.slice(0, 2), 10)
+  if (month > 12) month = 12
+
+  const monthStr = String(month).padStart(2, '0')
+
+  if (digits.length <= 2) return monthStr
+
+  return monthStr + '/' + digits.slice(2, 4)
+}
+
+export function PaymentForm({ billingId }: PaymentFormProps) {
+  const [cardNumber, setCardNumber] = useState('')
+  const [cvv, setCvv] = useState('')
+  const [holderName, setHolderName] = useState('')
+  const [expiryDate, setExpiryDate] = useState('')
   const [focused, setFocused] = useState<Focused>('')
+  const [cepStatus, setCepStatus] = useState<CepStatus>('idle')
 
   const {
-    register,
+    setValue,
     handleSubmit,
     watch,
     formState: { errors },
   } = useForm<PaymentFormData>({
     resolver: zodResolver(paymentSchema),
+    defaultValues: {
+      cardNumber: '',
+      holderName: '',
+      expiryDate: '',
+      cvv: '',
+      phone: '',
+      postalCode: '',
+      addressNumber: '',
+    },
   })
 
   const watchedValues = {
@@ -46,22 +94,25 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
     cvv: watch('cvv', ''),
   }
 
+  const queryClient = useQueryClient()
+
   const { mutateAsync: submitPayment, isPending } = useMutation({
     mutationFn: (data: PaymentFormData) =>
-      axios
-        .create()
-        .post(`http://localhost:8000/api/billing/${billingId}/pay`, {
-          card_number: data.cardNumber,
-          card_holder_name: data.holderName,
-          expiry_date: data.expiryDate,
-          cvv: data.cvv,
-          amount,
-        }),
+      api.post(`/billing/${billingId}/pay`, {
+        card_number: data.cardNumber,
+        card_holder_name: data.holderName,
+        expiry_date: data.expiryDate,
+        cvv: data.cvv,
+        phone: data.phone.replace(/\D/g, ''),
+        postal_code: data.postalCode.replace(/\D/g, ''),
+        address_number: data.addressNumber,
+      }),
     onSuccess: () => {
       toast.success('Pagamento realizado com sucesso!')
+      queryClient.invalidateQueries({ queryKey: ['billing', billingId] })
     },
     onError: () => {
-      toast.success('Dados salvos com sucesso!')
+      toast.error('Erro ao realizar o pagamento.')
     },
   })
 
@@ -70,7 +121,7 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
   }
 
   return (
-    <div className="w-full rounded-lg border border-border bg-card p-6 shadow-sm">
+    <div className="mt-7 w-full rounded-lg border border-border bg-card p-6 shadow-sm">
       <h2 className="mb-6 text-lg font-semibold text-foreground">
         Dados do cartão
       </h2>
@@ -87,15 +138,17 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
 
       <form onSubmit={handleSubmit(handlePayment)} className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="cardNumber">Número do cartão</Label>
+          <Label htmlFor="cardNumber" required>
+            Número do cartão
+          </Label>
           <Input
             id="cardNumber"
             placeholder="0000 0000 0000 0000"
             value={cardNumber}
-            {...register('cardNumber')}
             onChange={(e) => {
-              setCardNumber(e.target.value)
-              register('cardNumber').onChange(e)
+              const raw = e.target.value.replace(/\D/g, '').slice(0, 16)
+              setCardNumber(formatCardNumber(raw))
+              setValue('cardNumber', raw)
             }}
             onFocus={() => setFocused('number')}
           />
@@ -107,11 +160,18 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="holderName">Nome do titular</Label>
+          <Label htmlFor="holderName" required>
+            Nome do titular
+          </Label>
           <Input
             id="holderName"
             placeholder="JOÃO M A SILVA"
-            {...register('holderName')}
+            value={holderName}
+            onChange={(e) => {
+              const cleaned = e.target.value.replace(/[0-9]/g, '')
+              setHolderName(cleaned)
+              setValue('holderName', cleaned)
+            }}
             onFocus={() => setFocused('name')}
           />
           {errors.holderName && (
@@ -123,11 +183,18 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
 
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label htmlFor="expiryDate">Validade</Label>
+            <Label htmlFor="expiryDate" required>
+              Validade
+            </Label>
             <Input
               id="expiryDate"
               placeholder="MM/AA"
-              {...register('expiryDate')}
+              value={expiryDate}
+              onChange={(e) => {
+                const formatted = formatExpiryDate(e.target.value)
+                setExpiryDate(formatted)
+                setValue('expiryDate', formatted)
+              }}
               onFocus={() => setFocused('expiry')}
             />
             {errors.expiryDate && (
@@ -138,15 +205,17 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="cvv">CVV</Label>
+            <Label htmlFor="cvv" required>
+              CVV
+            </Label>
             <Input
               id="cvv"
               placeholder="123"
               value={cvv}
-              {...register('cvv')}
               onChange={(e) => {
-                setCvv(e.target.value)
-                register('cvv').onChange(e)
+                const cleaned = e.target.value.replace(/\D/g, '').slice(0, 3)
+                setCvv(cleaned)
+                setValue('cvv', cleaned)
               }}
               onFocus={() => setFocused('cvc')}
             />
@@ -156,11 +225,32 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
           </div>
         </div>
 
-        <Button type="submit" className="w-full" disabled={isPending}>
+        <BillingAddressForm
+          onChange={(data) => {
+            setValue('phone', data.phone)
+            setValue('postalCode', data.postalCode)
+            setValue('addressNumber', data.addressNumber)
+          }}
+          onCepStatus={setCepStatus}
+          errors={errors}
+        />
+
+        <Button
+          type="submit"
+          className="w-full"
+          disabled={
+            isPending || cepStatus === 'checking' || cepStatus === 'invalid'
+          }
+        >
           {isPending ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               Processando...
+            </>
+          ) : cepStatus === 'checking' ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Validando CEP...
             </>
           ) : (
             'Pagar'

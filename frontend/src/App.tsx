@@ -9,7 +9,7 @@ export function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <Toaster />
-      <RouterProvider router={router} />
+      <RouterProvider router={router} future={{ v7_startTransition: true }} />
     </QueryClientProvider>
   )
 }

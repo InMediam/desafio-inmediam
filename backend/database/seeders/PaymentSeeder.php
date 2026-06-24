@@ -2,6 +2,8 @@
 
 namespace Database\Seeders;
 
+use App\Enums\BillingStatus;
+use App\Enums\PaymentStatus;
 use App\Models\Billing;
 use App\Models\CreditCard;
 use App\Models\Customer;
@@ -13,8 +15,10 @@ class PaymentSeeder extends Seeder
 {
     public function run(): void
     {
-        $customer = Customer::where('email', 'maria@email.com')->first();
-        $billing = Billing::where('customer_id', $customer->id)->where('status', 'paid')->first();
+        $customer = Customer::where('email', 'maria@email.com')->firstOrFail();
+        $billing = Billing::where('customer_id', $customer->id)
+            ->where('status', BillingStatus::PAID->value)
+            ->firstOrFail();
 
         $creditCard = CreditCard::create([
             'customer_id' => $customer->id,
@@ -28,7 +32,7 @@ class PaymentSeeder extends Seeder
             'billing_id' => $billing->id,
             'credit_card_id' => $creditCard->id,
             'amount_paid' => $billing->amount,
-            'status' => 'CONFIRMED',
+            'status' => PaymentStatus::CONFIRMED->value,
             'paid_at' => Carbon::now()->subDays(3),
         ]);
     }
