@@ -14,7 +14,7 @@ return new class extends Migration
             $table->string('card_holder_name');
             $table->string('card_last_four', 4);
             $table->string('card_brand');
-            $table->string('card_token')->unique();
+            $table->string('card_token')->nullable()->unique();
             $table->timestamps();
         });
     }
