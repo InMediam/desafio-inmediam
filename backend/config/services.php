@@ -35,4 +35,13 @@ return [
         ],
     ],
 
+    'asaas' => [
+        'key' => env('ASAAS_API_KEY'),
+        'base_url' => env('ASAAS_BASE_URL', 'https://sandbox.asaas.com/api/v3'),
+        'timeout' => env('ASAAS_TIMEOUT', 15),
+        'default_holder_phone' => env('ASAAS_DEFAULT_HOLDER_PHONE', '0000000000'),
+        'default_holder_postal_code' => env('ASAAS_DEFAULT_HOLDER_POSTAL_CODE', '00000000'),
+        'default_holder_address_number' => env('ASAAS_DEFAULT_HOLDER_ADDRESS_NUMBER', '0'),
+    ],
+
 ];

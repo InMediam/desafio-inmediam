@@ -6,8 +6,8 @@ import MediamLogo from '@/assets/mediam.svg'
 
 export function Home() {
   return (
-    <div className="max- mx-auto flex min-h-screen w-full flex-col items-center justify-center gap-8 bg-muted p-6">
-      <div className="w-1/3 rounded-lg border border-border bg-card p-6 shadow-sm">
+    <div className="mx-auto flex min-h-screen w-full flex-col items-center justify-center gap-8 bg-muted p-6">
+      <div className="w-full max-w-lg rounded-lg border border-border bg-card p-6 shadow-sm">
         <div className="mb-6 flex items-center justify-center gap-1">
           <img
             src={InMediamShield}
@@ -17,12 +17,9 @@ export function Home() {
           <img src={MediamLogo} alt="Logo da empresa InMediam" />
         </div>
 
-        <h1 className="text-2xl font-bold text-foreground">
-          Pagamento de assinaturas
-        </h1>
+        <h1 className="text-2xl font-bold text-foreground">Pagamento de assinaturas</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Selecione uma cobrança para visualizar os detalhes e realizar o
-          pagamento.
+          Selecione uma cobrança para visualizar os detalhes e realizar o pagamento.
         </p>
 
         <div className="mt-6 space-y-3">
