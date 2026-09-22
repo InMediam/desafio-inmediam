@@ -6,7 +6,12 @@ use Illuminate\Database\Eloquent\Model;
 
 class Plan extends Model
 {
-    protected $guarded = [];
+    protected $fillable = [
+        'name',
+        'description',
+        'price',
+        'active',
+    ];
 
     public function billings()
     {

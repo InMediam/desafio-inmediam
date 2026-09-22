@@ -2,8 +2,8 @@ import 'react-credit-cards-2/dist/es/styles-compiled.css'
 
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Button, Input, Label } from '@inmediam/ui'
-import { useMutation } from '@tanstack/react-query'
-import axios from 'axios'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import type { AxiosError } from 'axios'
 import { Loader2 } from 'lucide-react'
 import { useState } from 'react'
 import Cards, { Focused } from 'react-credit-cards-2'
@@ -11,21 +11,37 @@ import { useForm } from 'react-hook-form'
 import { toast } from 'sonner'
 import { z } from 'zod'
 
+import { api } from '../../../lib/api'
+
 const paymentSchema = z.object({
-  cardNumber: z.string(),
-  holderName: z.string(),
-  expiryDate: z.string(),
-  cvv: z.string(),
+  cardNumber: z
+    .string()
+    .transform((value) => value.replace(/\s/g, ''))
+    .refine((value) => /^\d{13,19}$/.test(value), {
+      message: 'Informe um número de cartão válido.',
+    }),
+
+  holderName: z
+    .string()
+    .trim()
+    .min(2, 'Informe o nome do titular.')
+    .max(100, 'O nome do titular é muito longo.'),
+
+  expiryDate: z
+    .string()
+    .regex(/^(0[1-9]|1[0-2])\/\d{2}$/, 'Use o formato MM/AA.'),
+
+  cvv: z.string().regex(/^\d{3,4}$/, 'O CVV deve ter 3 ou 4 dígitos.'),
 })
 
 type PaymentFormData = z.infer<typeof paymentSchema>
 
 interface PaymentFormProps {
   billingId: string
-  amount: number
 }
 
-export function PaymentForm({ billingId, amount }: PaymentFormProps) {
+export function PaymentForm({ billingId }: PaymentFormProps) {
+  const queryClient = useQueryClient()
   const [cardNumber, setCardNumber] = useState<string>()
   const [cvv, setCvv] = useState<string>()
   const [focused, setFocused] = useState<Focused>('')
@@ -34,6 +50,7 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
     register,
     handleSubmit,
     watch,
+    setValue,
     formState: { errors },
   } = useForm<PaymentFormData>({
     resolver: zodResolver(paymentSchema),
@@ -46,22 +63,28 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
     cvv: watch('cvv', ''),
   }
 
-  const { mutateAsync: submitPayment, isPending } = useMutation({
+  const { mutate: submitPayment, isPending } = useMutation({
     mutationFn: (data: PaymentFormData) =>
-      axios
-        .create()
-        .post(`http://localhost:8000/api/billing/${billingId}/pay`, {
-          card_number: data.cardNumber,
-          card_holder_name: data.holderName,
-          expiry_date: data.expiryDate,
-          cvv: data.cvv,
-          amount,
-        }),
+      api.post(`/billing/${billingId}/pay`, {
+        card_number: data.cardNumber,
+        card_holder_name: data.holderName,
+        expiry_date: data.expiryDate,
+        cvv: data.cvv,
+      }),
     onSuccess: () => {
       toast.success('Pagamento realizado com sucesso!')
+
+      queryClient.invalidateQueries({
+        queryKey: ['billing', billingId],
+      })
     },
-    onError: () => {
-      toast.success('Dados salvos com sucesso!')
+    onError: (error) => {
+      const axiosError = error as AxiosError<{ message?: string }>
+
+      toast.error(
+        axiosError.response?.data?.message ??
+          'Não foi possível realizar o pagamento. Tente novamente.',
+      )
     },
   })
 
@@ -87,15 +110,17 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
 
       <form onSubmit={handleSubmit(handlePayment)} className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="cardNumber">Número do cartão</Label>
           <Input
             id="cardNumber"
             placeholder="0000 0000 0000 0000"
-            value={cardNumber}
+            value={cardNumber || ''}
             {...register('cardNumber')}
             onChange={(e) => {
               setCardNumber(e.target.value)
-              register('cardNumber').onChange(e)
+              setValue('cardNumber', e.target.value, {
+                shouldValidate: true,
+                shouldDirty: true,
+              })
             }}
             onFocus={() => setFocused('number')}
           />
@@ -138,15 +163,17 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="cvv">CVV</Label>
             <Input
               id="cvv"
               placeholder="123"
-              value={cvv}
+              value={cvv || ''}
               {...register('cvv')}
               onChange={(e) => {
                 setCvv(e.target.value)
-                register('cvv').onChange(e)
+                setValue('cvv', e.target.value, {
+                  shouldValidate: true,
+                  shouldDirty: true,
+                })
               }}
               onFocus={() => setFocused('cvc')}
             />
