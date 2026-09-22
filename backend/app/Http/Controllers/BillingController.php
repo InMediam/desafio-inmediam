@@ -2,94 +2,206 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\BillingStatus;
+use App\Enums\PaymentStatus;
+use App\Http\Requests\PayBillingRequest;
+use App\Http\Resources\BillingResource;
+use App\Http\Resources\PaymentResource;
 use App\Models\Billing;
 use App\Models\CreditCard;
 use App\Models\Payment;
+use App\Services\AsaasService;
+use App\Support\DocumentValidator;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class BillingController
 {
-    public function show(string $id): JsonResponse
+    private AsaasService $asaasService;
+
+    public function __construct(AsaasService $asaasService)
     {
-        $billing = Billing::with(['plan', 'payments.creditCard'])->find($id);
-
-        if (!$billing) {
-            return response()->json(['error' => 'Cobrança não encontrada'], 404);
-        }
-
-        return response()->json($billing);
+        $this->asaasService = $asaasService;
     }
 
-    public function pay(string $id, Request $request): JsonResponse
+    public function show(string $id): JsonResponse
     {
-        $billing = Billing::find($id);
+        $billing = Billing::with([
+            'plan',
+            'payments.creditCard',
+        ])->find($id);
 
-        if (!Billing::where('id', $id)->first()) {
-            return response()->json(['error' => 'Cobrança não encontrada'], 404);
+        if (! $billing) {
+            return response()->json([
+                'message' => 'Cobrança não encontrada.',
+            ], 404);
         }
 
-        $apiKey = '$aact_YourSandboxKeyHere';
-        $baseUrl = "https://sandbox.asaas.com/api/v3";
+        return (new BillingResource($billing))->response();
+    }
 
-        $customer = Http::withHeaders(['access_token' => $apiKey])->post("$baseUrl/customers", [
-            'name' => $billing->customer->name,
-            'email' => $billing->customer->email,
-            'cpfCnpj' => $billing->customer->document,
-            'notificationDisabled' => true, // ATENÇÃO: Não recomendo modificar, pois o Asaas envia notificações mesmo no ambiente de sandbox.
-        ]);
+    public function pay(string $id, PayBillingRequest $request): JsonResponse
+    {
+        try {
+            return DB::transaction(function () use ($id, $request) {
+                $billing = Billing::with('customer')
+                    ->whereKey($id)
+                    ->lockForUpdate()
+                    ->first();
 
-        $customer = (object) $customer->json();
+                if (! $billing) {
+                    return response()->json([
+                        'message' => 'Cobrança não encontrada.',
+                    ], 404);
+                }
 
-        $charge = Http::withHeaders(['access_token' => $apiKey])->post("$baseUrl/payments", [
-            'customer' => $customer->id,
-            'billingType' => 'CREDIT_CARD',
-            'value' => $request->amount,
-            'dueDate' => $billing->due_date,
-        ]);
+                if ($billing->status !== BillingStatus::PENDING) {
+                    return response()->json([
+                        'message' => 'Esta cobrança não está disponível para pagamento.',
+                    ], 409);
+                }
 
-        $charge = (object) $charge->json();
+                if (! DocumentValidator::isValid($billing->customer->document)) {
+                    Log::error('Documento inválido do cliente ao processar pagamento.', [
+                        'billing_id' => $id,
+                        'customer_id' => $billing->customer_id,
+                    ]);
 
-        $response = Http::withHeaders(['access_token' => $apiKey])->post("$baseUrl/payments/{$charge->id}/payWithCreditCard", [
-            'creditCard' => [
-                'holderName' => $request->card_holder_name,
-                'number' => $request->card_number,
-                'expiryMonth' => explode('/', $request->expiry_date)[0],
-                'expiryYear' => '20' . explode('/', $request->expiry_date)[1],
-                'ccv' => $request->cvv,
-            ],
-            'creditCardHolderInfo' => [
-                'name' => $billing->customer->name,
-                'email' => $billing->customer->email,
-                'cpfCnpj' => $billing->customer->document,
-                'phone' => '0000000000',
-                'postalCode' => '00000000',
-                'addressNumber' => '0',
-            ],
-        ]);
+                    return response()->json([
+                        'message' => 'O CPF/CNPJ do cliente é inválido.',
+                    ], 422);
+                }
 
-        $response = (object) $response->json();
+                $customer = $this->asaasService->createCustomer(
+                    $billing->customer->name,
+                    $billing->customer->email,
+                    $billing->customer->document
+                );
 
-        $credit_card = CreditCard::create([
-            'customer_id' => $billing->customer_id,
-            'card_holder_name' => $request->card_holder_name,
-            'card_last_four' => $response->creditCard['creditCardNumber'],
-            'card_brand' => $response->creditCard['creditCardBrand'],
-            'card_token' => $response->creditCard['creditCardToken'],
-        ]);
+                if (empty($customer['id'])) {
+                    Log::error('Resposta inválida do Asaas ao criar cliente.', [
+                        'billing_id' => $id,
+                    ]);
 
-        $payment = Payment::create([
-            'billing_id' => $billing->id,
-            'credit_card_id' => $credit_card->id,
-            'amount_paid' => $request->amount,
-            'status' => $response->status,
-            'paid_at' => now(),
-        ]);
+                    return response()->json([
+                        'message' => 'Não foi possível processar o pagamento.',
+                    ], 502);
+                }
 
-        $billing->status = 'paid';
-        $billing->save();
+                $charge = $this->asaasService->createCharge(
+                    $customer['id'],
+                    $billing->amount,
+                    $billing->due_date
+                );
 
-        return response()->json($payment);
+                if (empty($charge['id'])) {
+                    Log::error('Resposta inválida do Asaas ao criar cobrança.', [
+                        'billing_id' => $id,
+                    ]);
+
+                    return response()->json([
+                        'message' => 'Não foi possível processar o pagamento.',
+                    ], 502);
+                }
+
+                [$expiryMonth, $expiryYear] = explode(
+                    '/',
+                    $request->expiry_date
+                );
+
+                $response = $this->asaasService->payWithCreditCard(
+                    $charge['id'],
+                    [
+                        'holderName' => $request->card_holder_name,
+                        'number' => $request->card_number,
+                        'expiryMonth' => $expiryMonth,
+                        'expiryYear' => '20'.$expiryYear,
+                        'ccv' => $request->cvv,
+                    ],
+                    [
+                        'name' => $billing->customer->name,
+                        'email' => $billing->customer->email,
+                        'cpfCnpj' => $billing->customer->document,
+                        'phone' => '0000000000',
+                        'postalCode' => '00000000',
+                        'addressNumber' => '0',
+                    ]
+                );
+
+                $status = $response['status'] ?? null;
+
+                if ($status !== PaymentStatus::CONFIRMED->value) {
+                    return response()->json([
+                        'message' => 'O pagamento não foi confirmado pelo Asaas.',
+                    ], 422);
+                }
+
+                $creditCardData = $response['creditCard'] ?? null;
+
+                if (
+                    ! is_array($creditCardData) ||
+                    empty($creditCardData['creditCardBrand']) ||
+                    empty($creditCardData['creditCardToken'])
+                ) {
+                    Log::error('Resposta inválida do Asaas ao confirmar pagamento.', [
+                        'billing_id' => $id,
+                    ]);
+
+                    return response()->json([
+                        'message' => 'Não foi possível processar o pagamento.',
+                    ], 502);
+                }
+
+                $cardToken = $creditCardData['creditCardToken'];
+
+                $creditCard = CreditCard::create([
+                    'customer_id' => $billing->customer_id,
+                    'card_holder_name' => $request->card_holder_name,
+                    'card_last_four' => substr($request->card_number, -4),
+                    'card_brand' => $creditCardData['creditCardBrand'],
+                    'card_token' => $cardToken,
+                    'card_token_hash' => CreditCard::tokenHash($cardToken),
+                ]);
+
+                $payment = Payment::create([
+                    'billing_id' => $billing->id,
+                    'credit_card_id' => $creditCard->id,
+                    'amount_paid' => $billing->amount,
+                    'status' => PaymentStatus::CONFIRMED,
+                    'paid_at' => now(),
+                ]);
+
+                $billing->status = BillingStatus::PAID;
+                $billing->save();
+
+                $payment->load('creditCard');
+
+                return (new PaymentResource($payment))
+                    ->toResponse($request)
+                    ->setStatusCode(200);
+            });
+        } catch (ConnectionException $e) {
+            Log::error('Erro de conexão com o Asaas ao processar pagamento.', [
+                'billing_id' => $id,
+                'exception' => $e::class,
+            ]);
+
+            return response()->json([
+                'message' => 'Não foi possível conectar ao serviço de pagamento. Tente novamente.',
+            ], 503);
+        } catch (RequestException $e) {
+            Log::error('Erro retornado pela API do Asaas ao processar pagamento.', [
+                'billing_id' => $id,
+                'status' => $e->response?->status(),
+                'exception' => $e::class,
+            ]);
+
+            return response()->json([
+                'message' => 'Não foi possível processar o pagamento.',
+            ], 502);
+        }
     }
 }

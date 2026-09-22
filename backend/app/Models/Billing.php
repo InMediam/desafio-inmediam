@@ -2,11 +2,22 @@
 
 namespace App\Models;
 
+use App\Enums\BillingStatus;
 use Illuminate\Database\Eloquent\Model;
 
 class Billing extends Model
 {
-    protected $guarded = [];
+    protected $fillable = [
+        'plan_id',
+        'customer_id',
+        'amount',
+        'status',
+        'due_date',
+    ];
+
+    protected $casts = [
+        'status' => BillingStatus::class,
+    ];
 
     public function plan()
     {

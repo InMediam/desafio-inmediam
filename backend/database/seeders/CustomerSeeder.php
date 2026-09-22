@@ -9,16 +9,20 @@ class CustomerSeeder extends Seeder
 {
     public function run(): void
     {
-        Customer::create([
-            'name' => 'João da Silva',
-            'email' => 'joao@email.com',
-            'document' => '45596714003',
-        ]);
+        Customer::updateOrCreate(
+            ['email' => 'joao@email.com'],
+            [
+                'name' => 'João da Silva',
+                'document' => '45596714003',
+            ]
+        );
 
-        Customer::create([
-            'name' => 'Maria Oliveira',
-            'email' => 'maria@email.com',
-            'document' => '65577833000',
-        ]);
+        Customer::updateOrCreate(
+            ['email' => 'maria@email.com'],
+            [
+                'name' => 'Maria Oliveira',
+                'document' => '65577833000',
+            ]
+        );
     }
 }

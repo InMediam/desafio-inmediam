@@ -1,10 +1,10 @@
 import { Badge } from '@inmediam/ui'
 import { useQuery } from '@tanstack/react-query'
-import axios from 'axios'
 import { useParams } from 'react-router-dom'
 
 import InMediamShield from '@/assets/inmediam-shield.svg'
 import MediamLogo from '@/assets/mediam.svg'
+import { api } from '@/lib/api'
 import { currencyFormatter } from '@/utils/formatter'
 
 import { PaymentConcluded } from './components/payment-concluded'
@@ -13,15 +13,33 @@ import { PaymentForm } from './components/payment-form'
 export function Billing() {
   const { id } = useParams<{ id: string }>()
 
-  const { data } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ['billing', id],
     queryFn: async () => {
-      const response = await axios
-        .create()
-        .get(`http://localhost:8000/api/billing/${id}`)
+      const response = await api.get(`/billing/${id}`)
       return response.data
     },
   })
+
+  if (isLoading) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-muted">
+        <span className="text-sm text-muted-foreground">
+          Carregando cobrança...
+        </span>
+      </div>
+    )
+  }
+
+  if (isError) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-muted">
+        <span className="text-sm text-error-500">
+          Não foi possível carregar a cobrança. Tente novamente.
+        </span>
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-screen w-full flex-row items-start gap-8 bg-muted px-20 py-20">
@@ -42,12 +60,12 @@ export function Billing() {
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Plano</span>
             <span className="font-semibold text-foreground">
-              {data?.plan.name}
+              {data?.plan?.name}
             </span>
           </div>
 
           <p className="text-sm text-muted-foreground">
-            {data?.plan.description}
+            {data?.plan?.description}
           </p>
 
           <div className="flex items-center justify-between border-t border-border pt-4">
@@ -73,9 +91,7 @@ export function Billing() {
         </div>
       </div>
 
-      {data && data.status === 'pending' && (
-        <PaymentForm billingId={id!} amount={data?.amount} />
-      )}
+      {data && data.status === 'pending' && <PaymentForm billingId={id!} />}
 
       {data && data.status === 'paid' && data.payments?.[0] && (
         <PaymentConcluded payment={data.payments[0]} />
