@@ -15,7 +15,7 @@ Porém, o código possui **diversos problemas**: bugs, falhas de segurança, má
 ## Backend
 
 * **PHP 8.2+** com **Laravel 12**
-* **PostgreSQL 16**
+* **PostgreSQL 17**
 * **API do Asaas** (sandbox) para processamento de pagamentos
 
 ## Frontend

@@ -3,3 +3,5 @@ bugs.md
 .DS_Store
 Thumbs.db
 *.code-workspace
+.env
+.env.local

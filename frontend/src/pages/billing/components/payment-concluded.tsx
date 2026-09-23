@@ -60,7 +60,12 @@ export function PaymentConcluded({ payment }: PaymentConcludedProps) {
         <div className="flex items-center justify-between">
           <span className="text-sm text-muted-foreground">Data</span>
           <span className="text-sm text-foreground">
-            {payment.paid_at}
+            {payment.paid_at
+              ? `${new Date(payment.paid_at.replace(' ', 'T')).toLocaleDateString('pt-BR')} às ${new Date(payment.paid_at.replace(' ', 'T')).toLocaleTimeString('pt-BR', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}`
+              : '-'}
           </span>
         </div>
 

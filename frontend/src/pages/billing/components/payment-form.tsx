@@ -2,7 +2,7 @@ import 'react-credit-cards-2/dist/es/styles-compiled.css'
 
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Button, Input, Label } from '@inmediam/ui'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { Loader2 } from 'lucide-react'
 import { useState } from 'react'
@@ -11,29 +11,31 @@ import { useForm } from 'react-hook-form'
 import { toast } from 'sonner'
 import { z } from 'zod'
 
+// Valida os dados no frontend antes de enviar o pagamento para o backend.
 const paymentSchema = z.object({
-  cardNumber: z.string(),
-  holderName: z.string(),
-  expiryDate: z.string(),
-  cvv: z.string(),
+  cardNumber: z
+    .string()
+    .transform((value) => value.replace(/\D/g, ''))
+    .pipe(z.string().min(13).max(19)),
+  holderName: z.string().min(2),
+  expiryDate: z.string().regex(/^(0[1-9]|1[0-2])\/\d{2}$/),
+  cvv: z.string().min(3).max(4),
 })
 
 type PaymentFormData = z.infer<typeof paymentSchema>
 
 interface PaymentFormProps {
   billingId: string
-  amount: number
 }
 
-export function PaymentForm({ billingId, amount }: PaymentFormProps) {
-  const [cardNumber, setCardNumber] = useState<string>()
-  const [cvv, setCvv] = useState<string>()
+export function PaymentForm({ billingId }: PaymentFormProps) {
   const [focused, setFocused] = useState<Focused>('')
 
   const {
     register,
     handleSubmit,
     watch,
+    setValue,
     formState: { errors },
   } = useForm<PaymentFormData>({
     resolver: zodResolver(paymentSchema),
@@ -46,22 +48,34 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
     cvv: watch('cvv', ''),
   }
 
+  const queryClient = useQueryClient()
   const { mutateAsync: submitPayment, isPending } = useMutation({
     mutationFn: (data: PaymentFormData) =>
       axios
         .create()
-        .post(`http://localhost:8000/api/billing/${billingId}/pay`, {
-          card_number: data.cardNumber,
+        .post(`${import.meta.env.VITE_API_URL}/api/billing/${billingId}/pay`, {
+          // Remove a formatação antes de enviar o número do cartão ao backend.
+          card_number: data.cardNumber.replace(/\D/g, ''),
           card_holder_name: data.holderName,
           expiry_date: data.expiryDate,
           cvv: data.cvv,
-          amount,
         }),
     onSuccess: () => {
       toast.success('Pagamento realizado com sucesso!')
+      // Atualiza a cobrança atual e a lista da Home após o pagamento.
+      queryClient.invalidateQueries({ queryKey: ['billing', billingId] })
+      queryClient.invalidateQueries({ queryKey: ['billings'] })
     },
-    onError: () => {
-      toast.success('Dados salvos com sucesso!')
+    // Exibe uma mensagem de erro quando o pagamento não é processado.
+    onError: (error) => {
+      if (axios.isAxiosError<{ message?: string }>(error)) {
+        toast.error(
+          error.response?.data?.message ?? 'Erro ao processar o pagamento!',
+        )
+        return
+      }
+
+      toast.error('Erro ao processar o pagamento!')
     },
   })
 
@@ -77,10 +91,10 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
 
       <div className="mb-6">
         <Cards
-          number={cardNumber || watchedValues.cardNumber || ''}
+          number={watchedValues.cardNumber.match(/.{1,4}/g)?.join(' ') || ''}
           name={watchedValues.holderName}
           expiry={watchedValues.expiryDate}
-          cvc={cvv || watchedValues.cvv || ''}
+          cvc={watchedValues.cvv}
           focused={focused}
         />
       </div>
@@ -88,14 +102,15 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
       <form onSubmit={handleSubmit(handlePayment)} className="space-y-4">
         <div className="space-y-2">
           <Label htmlFor="cardNumber">Número do cartão</Label>
+          {/* Aplica máscara visual ao cartão, mantendo apenas os números no valor enviado à API. */}
           <Input
             id="cardNumber"
             placeholder="0000 0000 0000 0000"
-            value={cardNumber}
+            value={watchedValues.cardNumber.match(/.{1,4}/g)?.join(' ') || ''}
             {...register('cardNumber')}
             onChange={(e) => {
-              setCardNumber(e.target.value)
-              register('cardNumber').onChange(e)
+              const value = e.target.value.replace(/\D/g, '').slice(0, 19)
+              setValue('cardNumber', value, { shouldValidate: true })
             }}
             onFocus={() => setFocused('number')}
           />
@@ -124,10 +139,20 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="expiryDate">Validade</Label>
+            {/* Formata a validade automaticamente no padrão MM/AA. */}
             <Input
               id="expiryDate"
               placeholder="MM/AA"
+              value={watchedValues.expiryDate}
               {...register('expiryDate')}
+              onChange={(e) => {
+                const value = e.target.value.replace(/\D/g, '').slice(0, 4)
+                const formattedValue =
+                  value.length > 2
+                    ? `${value.slice(0, 2)}/${value.slice(2)}`
+                    : value
+                setValue('expiryDate', formattedValue, { shouldValidate: true })
+              }}
               onFocus={() => setFocused('expiry')}
             />
             {errors.expiryDate && (
@@ -142,11 +167,12 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
             <Input
               id="cvv"
               placeholder="123"
-              value={cvv}
+              value={watchedValues.cvv}
               {...register('cvv')}
               onChange={(e) => {
-                setCvv(e.target.value)
-                register('cvv').onChange(e)
+                // Permite somente números e limita o CVV a quatro dígitos.
+                const value = e.target.value.replace(/\D/g, '').slice(0, 4)
+                setValue('cvv', value, { shouldValidate: true })
               }}
               onFocus={() => setFocused('cvc')}
             />
