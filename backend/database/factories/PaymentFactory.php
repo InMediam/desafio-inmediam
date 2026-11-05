@@ -18,7 +18,9 @@ class PaymentFactory extends Factory
     {
         return [
             'billing_id' => Billing::factory(),
-            'credit_card_id' => CreditCard::factory(),
+            'credit_card_id' => fn (array $attributes) => CreditCard::factory()
+                ->for(Billing::find($attributes['billing_id'])->customer)
+                ->create()->id,
             'amount_paid' => fn (array $attributes) => Billing::find($attributes['billing_id'])->amount,
             'status' => 'CONFIRMED',
             'paid_at' => now(),
@@ -32,19 +34,6 @@ class PaymentFactory extends Factory
     {
         return $this->state(fn (array $attributes) => [
             'status' => 'PENDING',
-            'paid_at' => null,
-        ]);
-    }
-
-    /**
-     * Failed attempt. Not an Asaas payment status (a failed charge never
-     * becomes a Payment with a status there) — this marks our own record
-     * of an unsuccessful attempt once the controller is fixed to store one.
-     */
-    public function failed(): static
-    {
-        return $this->state(fn (array $attributes) => [
-            'status' => 'FAILED',
             'paid_at' => null,
         ]);
     }

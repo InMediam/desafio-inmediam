@@ -83,7 +83,9 @@ class PayBillingTest extends TestCase
 
         Http::assertNothingSent();
 
-        $this->assertDatabaseCount('payments', 0);
+        // The already-paid billing comes with its own payment from the factory;
+        // the point is that the request above did not create a second one.
+        $this->assertDatabaseCount('payments', 1);
     }
 
     public function test_it_returns_422_with_a_friendly_message_when_the_card_is_declined(): void

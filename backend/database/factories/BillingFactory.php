@@ -4,6 +4,7 @@ namespace Database\Factories;
 
 use App\Models\Billing;
 use App\Models\Customer;
+use App\Models\Payment;
 use App\Models\Plan;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
@@ -36,6 +37,8 @@ class BillingFactory extends Factory
     {
         return $this->state(fn (array $attributes) => [
             'status' => 'paid',
-        ]);
+        ])->afterCreating(function (Billing $billing) {
+            Payment::factory()->for($billing)->create();
+        });
     }
 }

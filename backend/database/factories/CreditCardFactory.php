@@ -17,7 +17,7 @@ class CreditCardFactory extends Factory
     {
         return [
             'customer_id' => Customer::factory(),
-            'card_holder_name' => strtoupper(fake('pt_BR')->name()),
+            'card_holder_name' => mb_strtoupper(fake('pt_BR')->name()),
             'card_last_four' => fake()->numerify('####'),
             'card_brand' => fake()->randomElement(['VISA', 'MASTERCARD', 'ELO']),
             'card_token' => fake()->unique()->uuid(),
