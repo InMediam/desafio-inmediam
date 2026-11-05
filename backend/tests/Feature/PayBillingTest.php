@@ -108,4 +108,50 @@ class PayBillingTest extends TestCase
         $this->assertDatabaseCount('credit_cards', 0);
         $this->assertSame('pending', $billing->refresh()->status);
     }
+
+    public function test_it_returns_502_with_a_generic_message_on_asaas_server_error(): void
+    {
+        $this->fakeAsaasServerError();
+
+        $billing = Billing::factory()->pending()->create();
+
+        $response = $this->postJson("/api/billing/{$billing->id}/pay", [
+            'card_number' => self::APPROVED_TEST_CARD_NUMBER,
+            'card_holder_name' => 'JOAO DA SILVA',
+            'expiry_date' => $this->validExpiryDate(),
+            'cvv' => '123',
+        ]);
+
+        $response->assertStatus(502);
+        $response->assertJson([
+            'error' => 'Não foi possível processar o pagamento. Tente novamente mais tarde.',
+        ]);
+
+        $this->assertDatabaseCount('payments', 0);
+        $this->assertDatabaseCount('credit_cards', 0);
+        $this->assertSame('pending', $billing->refresh()->status);
+    }
+
+    public function test_it_returns_502_with_a_generic_message_on_asaas_timeout(): void
+    {
+        $this->fakeAsaasTimeout();
+
+        $billing = Billing::factory()->pending()->create();
+
+        $response = $this->postJson("/api/billing/{$billing->id}/pay", [
+            'card_number' => self::APPROVED_TEST_CARD_NUMBER,
+            'card_holder_name' => 'JOAO DA SILVA',
+            'expiry_date' => $this->validExpiryDate(),
+            'cvv' => '123',
+        ]);
+
+        $response->assertStatus(502);
+        $response->assertJson([
+            'error' => 'Não foi possível processar o pagamento. Tente novamente mais tarde.',
+        ]);
+
+        $this->assertDatabaseCount('payments', 0);
+        $this->assertDatabaseCount('credit_cards', 0);
+        $this->assertSame('pending', $billing->refresh()->status);
+    }
 }
