@@ -112,8 +112,10 @@ class BillingController
             'paid_at' => now(),
         ]);
 
-        $billing->status = 'paid';
-        $billing->save();
+        if (in_array($response->status, ['CONFIRMED', 'RECEIVED'], true)) {
+            $billing->status = 'paid';
+            $billing->save();
+        }
 
         return response()->json($payment);
     }
