@@ -2,12 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\PayBillingRequest;
 use App\Models\Billing;
 use App\Models\CreditCard;
 use App\Models\Payment;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 
@@ -28,7 +28,7 @@ class BillingController
         return response()->json($billing);
     }
 
-    public function pay(string $id, Request $request): JsonResponse
+    public function pay(string $id, PayBillingRequest $request): JsonResponse
     {
         if (! ctype_digit($id)) {
             return response()->json(['error' => 'Cobrança não encontrada'], 404);
@@ -70,8 +70,8 @@ class BillingController
                 'creditCard' => [
                     'holderName' => $request->card_holder_name,
                     'number' => $request->card_number,
-                    'expiryMonth' => explode('/', $request->expiry_date)[0],
-                    'expiryYear' => '20'.explode('/', $request->expiry_date)[1],
+                    'expiryMonth' => $request->expiryMonth(),
+                    'expiryYear' => $request->expiryYear(),
                     'ccv' => $request->cvv,
                 ],
                 'creditCardHolderInfo' => [
