@@ -186,4 +186,37 @@ class PayBillingTest extends TestCase
 
         $this->assertSame('pending', $billing->refresh()->status);
     }
+
+    public function test_it_does_not_save_partial_data_when_something_fails_mid_write(): void
+    {
+        $billing = Billing::factory()->pending()->create();
+
+        $this->fakeAsaas([
+            '*/payments/*/payWithCreditCard' => function () use ($billing) {
+                // Simulates the billing being deleted concurrently between the
+                // charge being created and the credit card/payment being saved,
+                // so the payment insert violates the billings foreign key.
+                $billing->delete();
+
+                return Http::response([
+                    'status' => 'CONFIRMED',
+                    'creditCard' => [
+                        'creditCardNumber' => '1234',
+                        'creditCardBrand' => 'VISA',
+                        'creditCardToken' => 'tok_000000000001',
+                    ],
+                ], 200);
+            },
+        ]);
+
+        $this->postJson("/api/billing/{$billing->id}/pay", [
+            'card_number' => self::APPROVED_TEST_CARD_NUMBER,
+            'card_holder_name' => 'JOAO DA SILVA',
+            'expiry_date' => $this->validExpiryDate(),
+            'cvv' => '123',
+        ]);
+
+        $this->assertDatabaseCount('credit_cards', 0);
+        $this->assertDatabaseCount('payments', 0);
+    }
 }
