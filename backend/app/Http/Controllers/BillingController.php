@@ -13,6 +13,10 @@ class BillingController
 {
     public function show(string $id): JsonResponse
     {
+        if (! ctype_digit($id)) {
+            return response()->json(['error' => 'Cobrança não encontrada'], 404);
+        }
+
         $billing = Billing::with(['plan', 'payments.creditCard'])->find($id);
 
         if (! $billing) {
