@@ -33,4 +33,14 @@ class ShowBillingTest extends TestCase
 
         $response->assertStatus(404);
     }
+
+    public function test_it_does_not_leak_the_credit_card_token_for_a_paid_billing(): void
+    {
+        $billing = Billing::factory()->paid()->create();
+
+        $response = $this->getJson("/api/billing/{$billing->id}");
+
+        $response->assertOk();
+        $this->assertStringNotContainsString('card_token', $response->getContent());
+    }
 }

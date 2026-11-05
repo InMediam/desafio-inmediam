@@ -221,4 +221,48 @@ class PayBillingTest extends TestCase
         $this->assertDatabaseCount('credit_cards', 0);
         $this->assertDatabaseCount('payments', 0);
     }
+
+    public function test_it_uses_the_asaas_url_and_key_from_config(): void
+    {
+        config([
+            'services.asaas.key' => 'fake-asaas-key',
+            'services.asaas.base_url' => 'https://fake-asaas.test/v3',
+        ]);
+
+        $this->fakeAsaas();
+
+        $billing = Billing::factory()->pending()->create();
+
+        $response = $this->postJson("/api/billing/{$billing->id}/pay", [
+            'card_number' => self::APPROVED_TEST_CARD_NUMBER,
+            'card_holder_name' => 'JOAO DA SILVA',
+            'expiry_date' => $this->validExpiryDate(),
+            'cvv' => '123',
+        ]);
+
+        $response->assertOk();
+
+        Http::assertSent(function ($request) {
+            return str_starts_with($request->url(), 'https://fake-asaas.test/v3')
+                && $request->hasHeader('access_token', 'fake-asaas-key');
+        });
+    }
+
+    public function test_it_fails_in_a_controlled_way_without_an_asaas_key(): void
+    {
+        config(['services.asaas.key' => null]);
+
+        $billing = Billing::factory()->pending()->create();
+
+        $response = $this->postJson("/api/billing/{$billing->id}/pay", [
+            'card_number' => self::APPROVED_TEST_CARD_NUMBER,
+            'card_holder_name' => 'JOAO DA SILVA',
+            'expiry_date' => $this->validExpiryDate(),
+            'cvv' => '123',
+        ]);
+
+        $response->assertStatus(502);
+
+        Http::assertNothingSent();
+    }
 }

@@ -30,6 +30,8 @@
         <env name="DB_USERNAME" value="user"/>
         <env name="DB_PASSWORD" value="password"/>
         <env name="DB_URL" value=""/>
+        <env name="ASAAS_API_KEY" value="test-asaas-key"/>
+        <env name="ASAAS_BASE_URL" value="https://sandbox.asaas.com/api/v3"/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
