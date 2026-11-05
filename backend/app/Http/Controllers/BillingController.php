@@ -15,7 +15,7 @@ class BillingController
     {
         $billing = Billing::with(['plan', 'payments.creditCard'])->find($id);
 
-        if (!$billing) {
+        if (! $billing) {
             return response()->json(['error' => 'Cobrança não encontrada'], 404);
         }
 
@@ -26,12 +26,12 @@ class BillingController
     {
         $billing = Billing::find($id);
 
-        if (!Billing::where('id', $id)->first()) {
+        if (! Billing::where('id', $id)->first()) {
             return response()->json(['error' => 'Cobrança não encontrada'], 404);
         }
 
         $apiKey = '$aact_YourSandboxKeyHere';
-        $baseUrl = "https://sandbox.asaas.com/api/v3";
+        $baseUrl = 'https://sandbox.asaas.com/api/v3';
 
         $customer = Http::withHeaders(['access_token' => $apiKey])->post("$baseUrl/customers", [
             'name' => $billing->customer->name,
@@ -56,7 +56,7 @@ class BillingController
                 'holderName' => $request->card_holder_name,
                 'number' => $request->card_number,
                 'expiryMonth' => explode('/', $request->expiry_date)[0],
-                'expiryYear' => '20' . explode('/', $request->expiry_date)[1],
+                'expiryYear' => '20'.explode('/', $request->expiry_date)[1],
                 'ccv' => $request->cvv,
             ],
             'creditCardHolderInfo' => [
