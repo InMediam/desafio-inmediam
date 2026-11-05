@@ -22,16 +22,9 @@ trait FakesAsaas
      */
     protected function fakeAsaas(array $overrides = []): void
     {
-        Http::preventStrayRequests();
-
         Http::fake(array_merge([
-            'sandbox.asaas.com/api/v3/customers' => Http::response([
-                'id' => 'cus_000000000001',
-            ], 200),
-            'sandbox.asaas.com/api/v3/payments' => Http::response([
-                'id' => 'pay_000000000001',
-            ], 200),
-            'sandbox.asaas.com/api/v3/payments/*/payWithCreditCard' => Http::response([
+            // Registered before "*/payments" so it isn't swallowed by it.
+            '*/payments/*/payWithCreditCard' => Http::response([
                 'status' => 'CONFIRMED',
                 'creditCard' => [
                     'creditCardNumber' => '1234',
@@ -39,13 +32,19 @@ trait FakesAsaas
                     'creditCardToken' => 'tok_000000000001',
                 ],
             ], 200),
+            '*/customers' => Http::response([
+                'id' => 'cus_000000000001',
+            ], 200),
+            '*/payments' => Http::response([
+                'id' => 'pay_000000000001',
+            ], 200),
         ], $overrides));
     }
 
     protected function fakeAsaasCreditCardDeclined(): void
     {
         $this->fakeAsaas([
-            'sandbox.asaas.com/api/v3/payments/*/payWithCreditCard' => Http::response([
+            '*/payments/*/payWithCreditCard' => Http::response([
                 'errors' => [
                     ['code' => 'invalid_creditCard', 'description' => 'Cartão recusado pela operadora.'],
                 ],
@@ -56,16 +55,25 @@ trait FakesAsaas
     protected function fakeAsaasServerError(): void
     {
         $this->fakeAsaas([
-            'sandbox.asaas.com/api/v3/payments/*/payWithCreditCard' => Http::response([], 500),
+            '*/payments/*/payWithCreditCard' => Http::response([], 500),
         ]);
     }
 
     protected function fakeAsaasTimeout(): void
     {
         $this->fakeAsaas([
-            'sandbox.asaas.com/api/v3/payments/*/payWithCreditCard' => function () {
+            '*/payments/*/payWithCreditCard' => function () {
                 throw new ConnectionException('Connection timed out.');
             },
         ]);
+    }
+
+    /**
+     * A credit card expiry date that is always valid, in the MM/AA format
+     * the API expects.
+     */
+    protected function validExpiryDate(): string
+    {
+        return now()->addYears(2)->format('m/y');
     }
 }

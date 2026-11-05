@@ -1,0 +1,42 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\Billing;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
+use Tests\Support\FakesAsaas;
+use Tests\TestCase;
+
+class PayBillingTest extends TestCase
+{
+    use FakesAsaas;
+    use RefreshDatabase;
+
+    public function test_it_charges_the_billing_amount_and_ignores_the_payload_amount(): void
+    {
+        $this->fakeAsaas();
+
+        $billing = Billing::factory()->pending()->create(['amount' => 150.00]);
+
+        $response = $this->postJson("/api/billing/{$billing->id}/pay", [
+            'amount' => 0.01,
+            'card_number' => self::APPROVED_TEST_CARD_NUMBER,
+            'card_holder_name' => 'JOAO DA SILVA',
+            'expiry_date' => $this->validExpiryDate(),
+            'cvv' => '123',
+        ]);
+
+        $response->assertOk();
+
+        Http::assertSent(function ($request) {
+            return str_ends_with($request->url(), '/payments')
+                && (float) $request['value'] === 150.00;
+        });
+
+        $this->assertDatabaseHas('payments', [
+            'billing_id' => $billing->id,
+            'amount_paid' => 150.00,
+        ]);
+    }
+}
