@@ -154,4 +154,36 @@ class PayBillingTest extends TestCase
         $this->assertDatabaseCount('credit_cards', 0);
         $this->assertSame('pending', $billing->refresh()->status);
     }
+
+    public function test_it_only_marks_the_billing_as_paid_when_asaas_confirms_or_receives_it(): void
+    {
+        $this->fakeAsaas([
+            '*/payments/*/payWithCreditCard' => Http::response([
+                'status' => 'PENDING',
+                'creditCard' => [
+                    'creditCardNumber' => '1234',
+                    'creditCardBrand' => 'VISA',
+                    'creditCardToken' => 'tok_000000000001',
+                ],
+            ], 200),
+        ]);
+
+        $billing = Billing::factory()->pending()->create();
+
+        $response = $this->postJson("/api/billing/{$billing->id}/pay", [
+            'card_number' => self::APPROVED_TEST_CARD_NUMBER,
+            'card_holder_name' => 'JOAO DA SILVA',
+            'expiry_date' => $this->validExpiryDate(),
+            'cvv' => '123',
+        ]);
+
+        $response->assertOk();
+
+        $this->assertDatabaseHas('payments', [
+            'billing_id' => $billing->id,
+            'status' => 'PENDING',
+        ]);
+
+        $this->assertSame('pending', $billing->refresh()->status);
+    }
 }
