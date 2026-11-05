@@ -67,4 +67,22 @@ class PayBillingTest extends TestCase
 
         Http::assertNothingSent();
     }
+
+    public function test_it_returns_409_and_calls_asaas_nothing_when_billing_is_already_paid(): void
+    {
+        $billing = Billing::factory()->paid()->create();
+
+        $response = $this->postJson("/api/billing/{$billing->id}/pay", [
+            'card_number' => self::APPROVED_TEST_CARD_NUMBER,
+            'card_holder_name' => 'JOAO DA SILVA',
+            'expiry_date' => $this->validExpiryDate(),
+            'cvv' => '123',
+        ]);
+
+        $response->assertStatus(409);
+
+        Http::assertNothingSent();
+
+        $this->assertDatabaseCount('payments', 0);
+    }
 }
