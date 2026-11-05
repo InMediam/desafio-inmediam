@@ -39,4 +39,32 @@ class PayBillingTest extends TestCase
             'amount_paid' => 150.00,
         ]);
     }
+
+    public function test_it_returns_404_and_calls_asaas_nothing_when_billing_does_not_exist(): void
+    {
+        $response = $this->postJson('/api/billing/999999/pay', [
+            'card_number' => self::APPROVED_TEST_CARD_NUMBER,
+            'card_holder_name' => 'JOAO DA SILVA',
+            'expiry_date' => $this->validExpiryDate(),
+            'cvv' => '123',
+        ]);
+
+        $response->assertStatus(404);
+
+        Http::assertNothingSent();
+    }
+
+    public function test_it_returns_404_for_a_non_numeric_billing_id(): void
+    {
+        $response = $this->postJson('/api/billing/not-a-valid-id/pay', [
+            'card_number' => self::APPROVED_TEST_CARD_NUMBER,
+            'card_holder_name' => 'JOAO DA SILVA',
+            'expiry_date' => $this->validExpiryDate(),
+            'cvv' => '123',
+        ]);
+
+        $response->assertStatus(404);
+
+        Http::assertNothingSent();
+    }
 }
