@@ -81,6 +81,10 @@ class BillingController
             ],
         ]);
 
+        if ($response->clientError()) {
+            return response()->json(['error' => 'Pagamento recusado. Verifique os dados do cartão e tente novamente.'], 422);
+        }
+
         $response = (object) $response->json();
 
         $credit_card = CreditCard::create([
