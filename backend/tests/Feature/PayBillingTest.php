@@ -85,4 +85,27 @@ class PayBillingTest extends TestCase
 
         $this->assertDatabaseCount('payments', 0);
     }
+
+    public function test_it_returns_422_with_a_friendly_message_when_the_card_is_declined(): void
+    {
+        $this->fakeAsaasCreditCardDeclined();
+
+        $billing = Billing::factory()->pending()->create();
+
+        $response = $this->postJson("/api/billing/{$billing->id}/pay", [
+            'card_number' => self::APPROVED_TEST_CARD_NUMBER,
+            'card_holder_name' => 'JOAO DA SILVA',
+            'expiry_date' => $this->validExpiryDate(),
+            'cvv' => '123',
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJson([
+            'error' => 'Pagamento recusado. Verifique os dados do cartão e tente novamente.',
+        ]);
+
+        $this->assertDatabaseCount('payments', 0);
+        $this->assertDatabaseCount('credit_cards', 0);
+        $this->assertSame('pending', $billing->refresh()->status);
+    }
 }
