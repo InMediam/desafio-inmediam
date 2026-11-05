@@ -8,6 +8,7 @@ use App\Models\Payment;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 
 class BillingController
@@ -96,26 +97,30 @@ class BillingController
 
         $response = (object) $response->json();
 
-        $credit_card = CreditCard::create([
-            'customer_id' => $billing->customer_id,
-            'card_holder_name' => $request->card_holder_name,
-            'card_last_four' => $response->creditCard['creditCardNumber'],
-            'card_brand' => $response->creditCard['creditCardBrand'],
-            'card_token' => $response->creditCard['creditCardToken'],
-        ]);
+        $payment = DB::transaction(function () use ($billing, $request, $response) {
+            $credit_card = CreditCard::create([
+                'customer_id' => $billing->customer_id,
+                'card_holder_name' => $request->card_holder_name,
+                'card_last_four' => $response->creditCard['creditCardNumber'],
+                'card_brand' => $response->creditCard['creditCardBrand'],
+                'card_token' => $response->creditCard['creditCardToken'],
+            ]);
 
-        $payment = Payment::create([
-            'billing_id' => $billing->id,
-            'credit_card_id' => $credit_card->id,
-            'amount_paid' => $billing->amount,
-            'status' => $response->status,
-            'paid_at' => now(),
-        ]);
+            $payment = Payment::create([
+                'billing_id' => $billing->id,
+                'credit_card_id' => $credit_card->id,
+                'amount_paid' => $billing->amount,
+                'status' => $response->status,
+                'paid_at' => now(),
+            ]);
 
-        if (in_array($response->status, ['CONFIRMED', 'RECEIVED'], true)) {
-            $billing->status = 'paid';
-            $billing->save();
-        }
+            if (in_array($response->status, ['CONFIRMED', 'RECEIVED'], true)) {
+                $billing->status = 'paid';
+                $billing->save();
+            }
+
+            return $payment;
+        });
 
         return response()->json($payment);
     }
