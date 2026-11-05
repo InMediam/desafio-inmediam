@@ -38,6 +38,10 @@ class BillingController
             return response()->json(['error' => 'Cobrança não encontrada'], 404);
         }
 
+        if ($billing->status === 'paid') {
+            return response()->json(['error' => 'Cobrança já paga'], 409);
+        }
+
         $apiKey = '$aact_YourSandboxKeyHere';
         $baseUrl = 'https://sandbox.asaas.com/api/v3';
 
