@@ -44,8 +44,12 @@ class BillingController
             return response()->json(['error' => 'Cobrança já paga'], 409);
         }
 
-        $apiKey = '$aact_YourSandboxKeyHere';
-        $baseUrl = 'https://sandbox.asaas.com/api/v3';
+        $apiKey = config('services.asaas.key');
+        $baseUrl = config('services.asaas.base_url');
+
+        if (! $apiKey) {
+            return response()->json(['error' => 'Não foi possível processar o pagamento. Tente novamente mais tarde.'], 502);
+        }
 
         try {
             $customer = Http::timeout(10)->withHeaders(['access_token' => $apiKey])->post("$baseUrl/customers", [

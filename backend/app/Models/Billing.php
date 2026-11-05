@@ -9,7 +9,7 @@ class Billing extends Model
 {
     use HasFactory;
 
-    protected $guarded = [];
+    protected $fillable = ['plan_id', 'customer_id', 'amount', 'status', 'due_date'];
 
     public function plan()
     {

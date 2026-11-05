@@ -8,4 +8,4 @@ Route::get('/', function () {
 });
 
 Route::get('/billing/{id}', [BillingController::class, 'show']);
-Route::post('/billing/{id}/pay', [BillingController::class, 'pay']);
+Route::post('/billing/{id}/pay', [BillingController::class, 'pay'])->middleware('throttle:10,1');
