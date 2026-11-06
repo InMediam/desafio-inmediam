@@ -33,5 +33,16 @@ class BillingSeeder extends Seeder
             'status' => 'paid',
             'due_date' => Carbon::now()->subDays(5)->toDateString(),
         ]);
+
+        $plan = Plan::where('name', 'Empresarial')->first();
+        $customer = Customer::where('email', 'empresa@email.com')->first();
+
+        Billing::create([
+            'plan_id' => $plan->id,
+            'customer_id' => $customer->id,
+            'amount' => $plan->price,
+            'status' => 'pending',
+            'due_date' => Carbon::now()->addDay()->toDateString(),
+        ]);
     }
 }

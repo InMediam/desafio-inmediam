@@ -26,5 +26,14 @@ class CustomerSeeder extends Seeder
             'postal_code' => '20040020',
             'address_number' => '50',
         ]);
+
+        Customer::create([
+            'name' => 'Empresa Exemplo Ltda',
+            'email' => 'empresa@email.com',
+            'document' => '11222333000181',
+            'phone' => '11987654322',
+            'postal_code' => '04538133',
+            'address_number' => '1000',
+        ]);
     }
 }
