@@ -15,6 +15,7 @@ class BillingResource extends JsonResource
             'status' => $this->status,
             'due_date' => $this->due_date,
             'plan' => new PlanResource($this->plan),
+            'customer' => new CustomerResource($this->customer),
             'payments' => PaymentResource::collection($this->payments),
         ];
     }

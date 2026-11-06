@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Billing;
+use App\Models\Customer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -18,6 +19,17 @@ class ShowBillingTest extends TestCase
 
         $response->assertOk();
         $response->assertJsonFragment(['id' => $billing->id]);
+    }
+
+    public function test_it_returns_the_customer_name(): void
+    {
+        $customer = Customer::factory()->create(['name' => 'Empresa Exemplo Ltda']);
+        $billing = Billing::factory()->for($customer)->create();
+
+        $response = $this->getJson("/api/billing/{$billing->id}");
+
+        $response->assertOk();
+        $response->assertJsonFragment(['customer' => ['name' => 'Empresa Exemplo Ltda']]);
     }
 
     public function test_it_returns_404_when_billing_does_not_exist(): void
