@@ -2,22 +2,9 @@ import 'react-credit-cards-2/dist/es/styles-compiled.css'
 
 import { Badge } from '@inmediam/ui'
 import { CircleCheck } from 'lucide-react'
-import Cards from 'react-credit-cards-2'
 
-import { currencyFormatter } from '@/utils/formatter'
-
-interface PaymentCreditCard {
-  card_holder_name: string
-  card_last_four: string
-  card_brand: string
-}
-
-interface Payment {
-  amount_paid: number
-  status: string
-  paid_at: string
-  credit_card: PaymentCreditCard
-}
+import type { Payment } from '@/types/billing'
+import { formatCurrency, formatPaymentDate } from '@/utils/formatter'
 
 interface PaymentConcludedProps {
   payment: Payment
@@ -53,14 +40,14 @@ export function PaymentConcluded({ payment }: PaymentConcludedProps) {
         <div className="flex items-center justify-between border-t border-border pt-3">
           <span className="text-sm text-muted-foreground">Valor pago</span>
           <span className="font-bold text-foreground">
-            {currencyFormatter.format(payment.amount_paid)}
+            {formatCurrency(payment.amount_paid)}
           </span>
         </div>
 
         <div className="flex items-center justify-between">
           <span className="text-sm text-muted-foreground">Data</span>
           <span className="text-sm text-foreground">
-            {payment.paid_at}
+            {formatPaymentDate(payment.paid_at)}
           </span>
         </div>
 

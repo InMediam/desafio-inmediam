@@ -111,6 +111,25 @@ http://localhost:3000
 
 Você verá a página inicial com links para as cobranças disponíveis. Clique em uma cobrança pendente para visualizar a tela de pagamento.
 
+# Testes
+
+## Backend
+
+```bash
+cd backend
+composer test
+```
+
+Os testes rodam contra um banco Postgres dedicado (`desafio_test`), criado automaticamente pelo `docker compose up -d` a partir de um script de init (`docker/postgres/init-test-db.sql`). Não é necessário nenhum passo manual de setup.
+
+## Frontend
+
+```bash
+cd frontend
+npm run test        # roda uma vez
+npm run test:watch  # modo watch
+```
+
 # Estrutura do projeto
 
 ```

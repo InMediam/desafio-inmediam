@@ -2,94 +2,48 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\PayBillingRequest;
+use App\Http\Resources\BillingListResource;
+use App\Http\Resources\BillingResource;
+use App\Http\Resources\PaymentResource;
 use App\Models\Billing;
-use App\Models\CreditCard;
-use App\Models\Payment;
+use App\Services\Billing\BillingPaymentService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
 
 class BillingController
 {
-    public function show(string $id): JsonResponse
+    public function __construct(private readonly BillingPaymentService $paymentService) {}
+
+    public function index(): JsonResponse
     {
-        $billing = Billing::with(['plan', 'payments.creditCard'])->find($id);
+        $billings = Billing::with(['plan', 'customer'])->orderBy('id')->get();
 
-        if (!$billing) {
-            return response()->json(['error' => 'Cobrança não encontrada'], 404);
-        }
-
-        return response()->json($billing);
+        return BillingListResource::collection($billings)->response();
     }
 
-    public function pay(string $id, Request $request): JsonResponse
+    public function show(string $id): JsonResponse
     {
-        $billing = Billing::find($id);
-
-        if (!Billing::where('id', $id)->first()) {
+        if (! ctype_digit($id)) {
             return response()->json(['error' => 'Cobrança não encontrada'], 404);
         }
 
-        $apiKey = '$aact_YourSandboxKeyHere';
-        $baseUrl = "https://sandbox.asaas.com/api/v3";
+        $billing = Billing::with(['plan', 'customer', 'payments.creditCard'])->find($id);
 
-        $customer = Http::withHeaders(['access_token' => $apiKey])->post("$baseUrl/customers", [
-            'name' => $billing->customer->name,
-            'email' => $billing->customer->email,
-            'cpfCnpj' => $billing->customer->document,
-            'notificationDisabled' => true, // ATENÇÃO: Não recomendo modificar, pois o Asaas envia notificações mesmo no ambiente de sandbox.
-        ]);
+        if (! $billing) {
+            return response()->json(['error' => 'Cobrança não encontrada'], 404);
+        }
 
-        $customer = (object) $customer->json();
+        return (new BillingResource($billing))->response();
+    }
 
-        $charge = Http::withHeaders(['access_token' => $apiKey])->post("$baseUrl/payments", [
-            'customer' => $customer->id,
-            'billingType' => 'CREDIT_CARD',
-            'value' => $request->amount,
-            'dueDate' => $billing->due_date,
-        ]);
+    public function pay(string $id, PayBillingRequest $request): JsonResponse
+    {
+        $payment = $this->paymentService->pay(
+            $id,
+            $request->toCreditCardData(),
+            $request->header('Idempotency-Key'),
+        );
 
-        $charge = (object) $charge->json();
-
-        $response = Http::withHeaders(['access_token' => $apiKey])->post("$baseUrl/payments/{$charge->id}/payWithCreditCard", [
-            'creditCard' => [
-                'holderName' => $request->card_holder_name,
-                'number' => $request->card_number,
-                'expiryMonth' => explode('/', $request->expiry_date)[0],
-                'expiryYear' => '20' . explode('/', $request->expiry_date)[1],
-                'ccv' => $request->cvv,
-            ],
-            'creditCardHolderInfo' => [
-                'name' => $billing->customer->name,
-                'email' => $billing->customer->email,
-                'cpfCnpj' => $billing->customer->document,
-                'phone' => '0000000000',
-                'postalCode' => '00000000',
-                'addressNumber' => '0',
-            ],
-        ]);
-
-        $response = (object) $response->json();
-
-        $credit_card = CreditCard::create([
-            'customer_id' => $billing->customer_id,
-            'card_holder_name' => $request->card_holder_name,
-            'card_last_four' => $response->creditCard['creditCardNumber'],
-            'card_brand' => $response->creditCard['creditCardBrand'],
-            'card_token' => $response->creditCard['creditCardToken'],
-        ]);
-
-        $payment = Payment::create([
-            'billing_id' => $billing->id,
-            'credit_card_id' => $credit_card->id,
-            'amount_paid' => $request->amount,
-            'status' => $response->status,
-            'paid_at' => now(),
-        ]);
-
-        $billing->status = 'paid';
-        $billing->save();
-
-        return response()->json($payment);
+        return (new PaymentResource($payment))->response()->setStatusCode(200);
     }
 }

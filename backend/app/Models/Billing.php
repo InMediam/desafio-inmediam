@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Billing extends Model
 {
-    protected $guarded = [];
+    use HasFactory;
+
+    protected $fillable = ['plan_id', 'customer_id', 'amount', 'status', 'due_date', 'asaas_charge_id'];
 
     public function plan()
     {

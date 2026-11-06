@@ -1,4 +1,5 @@
 import { QueryClientProvider } from '@tanstack/react-query'
+import { ThemeProvider } from 'next-themes'
 import { RouterProvider } from 'react-router-dom'
 
 import { Toaster } from '@/components/sonner'
@@ -7,9 +8,11 @@ import { router } from '@/routes'
 
 export function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <Toaster />
-      <RouterProvider router={router} />
-    </QueryClientProvider>
+    <ThemeProvider attribute="class" forcedTheme="light">
+      <QueryClientProvider client={queryClient}>
+        <Toaster />
+        <RouterProvider router={router} future={{ v7_startTransition: true }} />
+      </QueryClientProvider>
+    </ThemeProvider>
   )
 }

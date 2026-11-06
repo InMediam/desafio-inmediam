@@ -2,14 +2,16 @@ import { Button } from '@inmediam/ui'
 import { isAxiosError } from 'axios'
 import { NavLink, useRouteError } from 'react-router-dom'
 
+import { getApiErrorMessage } from '@/lib/api'
+
 import NotFoundImage from '../assets/not-found.svg'
 
-export function Error() {
-  const error = useRouteError() as Error
+export function ErrorPage() {
+  const error = useRouteError()
   const axiosError = isAxiosError(error)
   const errorMessage = axiosError
-    ? error?.response?.data.message
-    : error?.message || JSON.stringify(error)
+    ? getApiErrorMessage(error)
+    : (error as Error)?.message || JSON.stringify(error)
 
   return (
     <div className="flex h-screen flex-col items-center justify-center gap-2 bg-background">
