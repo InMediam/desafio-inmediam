@@ -361,13 +361,18 @@ class PayBillingTest extends TestCase
         ]);
         $billing = Billing::factory()->pending()->for($customer)->create();
 
-        $this->postJson("/api/billing/{$billing->id}/pay", $this->validPayload())->assertOk();
+        $expiryDate = $this->validExpiryDate();
+        [$expiryMonth, $expiryYear] = explode('/', $expiryDate);
 
-        Http::assertSent(function ($request) use ($customer) {
+        $this->postJson("/api/billing/{$billing->id}/pay", $this->validPayload(['expiry_date' => $expiryDate]))->assertOk();
+
+        Http::assertSent(function ($request) use ($customer, $expiryMonth, $expiryYear) {
             return str_ends_with($request->url(), '/payWithCreditCard')
                 && $request['creditCardHolderInfo']['phone'] === $customer->phone
                 && $request['creditCardHolderInfo']['postalCode'] === $customer->postal_code
-                && $request['creditCardHolderInfo']['addressNumber'] === $customer->address_number;
+                && $request['creditCardHolderInfo']['addressNumber'] === $customer->address_number
+                && $request['creditCard']['expiryMonth'] === $expiryMonth
+                && $request['creditCard']['expiryYear'] === '20'.$expiryYear;
         });
     }
 }
