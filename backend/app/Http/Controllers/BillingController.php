@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Contracts\PaymentGateway;
 use App\Http\Requests\PayBillingRequest;
 use App\Models\Billing;
 use App\Models\CreditCard;
@@ -9,12 +10,13 @@ use App\Models\Payment;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class BillingController
 {
+    public function __construct(private readonly PaymentGateway $gateway) {}
+
     public function show(string $id): JsonResponse
     {
         if (! ctype_digit($id)) {
@@ -82,10 +84,7 @@ class BillingController
                 return ['status' => 409, 'error' => 'Cobrança já paga'];
             }
 
-            $apiKey = config('services.asaas.key');
-            $baseUrl = config('services.asaas.base_url');
-
-            if (! $apiKey) {
+            if (! config('services.asaas.key')) {
                 Log::channel('payments')->error('billing.payment.failed', [
                     'billing_id' => $billing->id,
                     'correlation_id' => $correlationId,
@@ -100,14 +99,13 @@ class BillingController
                 $customerId = $billing->customer->asaas_customer_id;
 
                 if (! $customerId) {
-                    $customerResponse = Http::timeout(10)->withHeaders(['access_token' => $apiKey])->post("$baseUrl/customers", [
-                        'name' => $billing->customer->name,
-                        'email' => $billing->customer->email,
-                        'cpfCnpj' => $billing->customer->document,
-                        'notificationDisabled' => true, // ATENÇÃO: Não recomendo modificar, pois o Asaas envia notificações mesmo no ambiente de sandbox.
-                    ]);
+                    $customer = $this->gateway->createCustomer(
+                        $billing->customer->name,
+                        $billing->customer->email,
+                        $billing->customer->document,
+                    );
 
-                    $customerId = $customerResponse->json('id');
+                    $customerId = $customer['id'];
 
                     $billing->customer->asaas_customer_id = $customerId;
                     $billing->customer->save();
@@ -116,36 +114,32 @@ class BillingController
                 $chargeId = $billing->asaas_charge_id;
 
                 if (! $chargeId) {
-                    $chargeResponse = Http::timeout(10)->withHeaders(['access_token' => $apiKey])->post("$baseUrl/payments", [
-                        'customer' => $customerId,
-                        'billingType' => 'CREDIT_CARD',
-                        'value' => $billing->amount,
-                        'dueDate' => $billing->due_date,
-                    ]);
+                    $charge = $this->gateway->createCharge($customerId, $billing->amount, $billing->due_date);
 
-                    $chargeId = $chargeResponse->json('id');
+                    $chargeId = $charge['id'];
 
                     $billing->asaas_charge_id = $chargeId;
                     $billing->save();
                 }
 
-                $response = Http::timeout(10)->withHeaders(['access_token' => $apiKey])->post("$baseUrl/payments/{$chargeId}/payWithCreditCard", [
-                    'creditCard' => [
+                $chargeResult = $this->gateway->payWithCreditCard(
+                    $chargeId,
+                    [
                         'holderName' => $request->card_holder_name,
                         'number' => $request->card_number,
                         'expiryMonth' => $request->expiryMonth(),
                         'expiryYear' => $request->expiryYear(),
-                        'ccv' => $request->cvv,
+                        'cvv' => $request->cvv,
                     ],
-                    'creditCardHolderInfo' => [
+                    [
                         'name' => $billing->customer->name,
                         'email' => $billing->customer->email,
-                        'cpfCnpj' => $billing->customer->document,
+                        'document' => $billing->customer->document,
                         'phone' => $billing->customer->phone,
                         'postalCode' => $billing->customer->postal_code,
                         'addressNumber' => $billing->customer->address_number,
                     ],
-                ]);
+                );
             } catch (ConnectionException $exception) {
                 Log::channel('payments')->error('billing.payment.failed', [
                     'billing_id' => $billing->id,
@@ -160,55 +154,53 @@ class BillingController
 
             $asaasDurationMs = (int) ((microtime(true) - $asaasCallStartedAt) * 1000);
 
-            if ($response->serverError()) {
+            if ($chargeResult['httpStatus'] >= 500) {
                 Log::channel('payments')->error('billing.payment.failed', [
                     'billing_id' => $billing->id,
                     'correlation_id' => $correlationId,
                     'asaas_charge_id' => $chargeId,
-                    'http_status' => $response->status(),
-                    'asaas_error_code' => $response->json('errors.0.code'),
-                    'asaas_error_description' => $response->json('errors.0.description'),
+                    'http_status' => $chargeResult['httpStatus'],
+                    'asaas_error_code' => $chargeResult['errorCode'],
+                    'asaas_error_description' => $chargeResult['errorDescription'],
                     'duration_ms' => $asaasDurationMs,
                 ]);
 
                 return ['status' => 502, 'error' => 'Não foi possível processar o pagamento. Tente novamente mais tarde.'];
             }
 
-            if ($response->clientError()) {
+            if ($chargeResult['httpStatus'] >= 400) {
                 Log::channel('payments')->warning('billing.payment.declined', [
                     'billing_id' => $billing->id,
                     'correlation_id' => $correlationId,
                     'asaas_charge_id' => $chargeId,
-                    'http_status' => $response->status(),
-                    'asaas_error_code' => $response->json('errors.0.code'),
-                    'asaas_error_description' => $response->json('errors.0.description'),
+                    'http_status' => $chargeResult['httpStatus'],
+                    'asaas_error_code' => $chargeResult['errorCode'],
+                    'asaas_error_description' => $chargeResult['errorDescription'],
                     'duration_ms' => $asaasDurationMs,
                 ]);
 
                 return ['status' => 422, 'error' => 'Pagamento recusado. Verifique os dados do cartão e tente novamente.'];
             }
 
-            $responseData = (object) $response->json();
-
             $creditCard = CreditCard::create([
                 'customer_id' => $billing->customer_id,
                 'card_holder_name' => $request->card_holder_name,
-                'card_last_four' => $responseData->creditCard['creditCardNumber'],
-                'card_brand' => $responseData->creditCard['creditCardBrand'],
-                'card_token' => $responseData->creditCard['creditCardToken'],
+                'card_last_four' => $chargeResult['cardLastFour'],
+                'card_brand' => $chargeResult['cardBrand'],
+                'card_token' => $chargeResult['cardToken'],
             ]);
 
             $payment = Payment::create([
                 'billing_id' => $billing->id,
                 'credit_card_id' => $creditCard->id,
                 'amount_paid' => $billing->amount,
-                'status' => $responseData->status,
+                'status' => $chargeResult['status'],
                 'paid_at' => now(),
                 'asaas_charge_id' => $chargeId,
                 'idempotency_key' => $idempotencyKey,
             ]);
 
-            $isConfirmed = in_array($responseData->status, ['CONFIRMED', 'RECEIVED'], true);
+            $isConfirmed = in_array($chargeResult['status'], ['CONFIRMED', 'RECEIVED'], true);
 
             $billing->status = $isConfirmed ? 'paid' : 'pending';
             $billing->save();
@@ -217,8 +209,8 @@ class BillingController
                 'billing_id' => $billing->id,
                 'correlation_id' => $correlationId,
                 'asaas_charge_id' => $chargeId,
-                'status' => $responseData->status,
-                'http_status' => $response->status(),
+                'status' => $chargeResult['status'],
+                'http_status' => $chargeResult['httpStatus'],
                 'duration_ms' => $asaasDurationMs,
             ]);
 
