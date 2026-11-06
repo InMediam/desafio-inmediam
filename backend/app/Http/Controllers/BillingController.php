@@ -10,6 +10,7 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class BillingController
 {
@@ -34,6 +35,8 @@ class BillingController
             return response()->json(['error' => 'Cobrança não encontrada'], 404);
         }
 
+        Log::channel('payments')->info('billing.payment.started', ['billing_id' => (int) $id]);
+
         $idempotencyKey = $request->header('Idempotency-Key');
 
         if ($idempotencyKey) {
@@ -48,10 +51,21 @@ class BillingController
             $billing = Billing::lockForUpdate()->find($id);
 
             if (! $billing) {
+                Log::channel('payments')->warning('billing.payment.rejected', [
+                    'billing_id' => (int) $id,
+                    'reason' => 'not_found',
+                ]);
+
                 return ['status' => 404, 'error' => 'Cobrança não encontrada'];
             }
 
             if ($billing->status === 'paid') {
+                Log::channel('payments')->warning('billing.payment.rejected', [
+                    'billing_id' => $billing->id,
+                    'asaas_charge_id' => $billing->asaas_charge_id,
+                    'reason' => 'already_paid',
+                ]);
+
                 return ['status' => 409, 'error' => 'Cobrança já paga'];
             }
 
@@ -59,6 +73,8 @@ class BillingController
             $baseUrl = config('services.asaas.base_url');
 
             if (! $apiKey) {
+                Log::channel('payments')->error('billing.payment.failed', ['billing_id' => $billing->id]);
+
                 return ['status' => 502, 'error' => 'Não foi possível processar o pagamento. Tente novamente mais tarde.'];
             }
 
@@ -113,14 +129,31 @@ class BillingController
                     ],
                 ]);
             } catch (ConnectionException) {
+                Log::channel('payments')->error('billing.payment.failed', [
+                    'billing_id' => $billing->id,
+                    'asaas_charge_id' => $chargeId ?? null,
+                ]);
+
                 return ['status' => 502, 'error' => 'Não foi possível processar o pagamento. Tente novamente mais tarde.'];
             }
 
             if ($response->serverError()) {
+                Log::channel('payments')->error('billing.payment.failed', [
+                    'billing_id' => $billing->id,
+                    'asaas_charge_id' => $chargeId,
+                    'http_status' => $response->status(),
+                ]);
+
                 return ['status' => 502, 'error' => 'Não foi possível processar o pagamento. Tente novamente mais tarde.'];
             }
 
             if ($response->clientError()) {
+                Log::channel('payments')->warning('billing.payment.declined', [
+                    'billing_id' => $billing->id,
+                    'asaas_charge_id' => $chargeId,
+                    'http_status' => $response->status(),
+                ]);
+
                 return ['status' => 422, 'error' => 'Pagamento recusado. Verifique os dados do cartão e tente novamente.'];
             }
 
@@ -148,6 +181,13 @@ class BillingController
                 ? 'paid'
                 : 'pending';
             $billing->save();
+
+            Log::channel('payments')->info('billing.payment.confirmed', [
+                'billing_id' => $billing->id,
+                'asaas_charge_id' => $chargeId,
+                'status' => $responseData->status,
+                'http_status' => $response->status(),
+            ]);
 
             return ['status' => 200, 'payment' => $payment];
         });
