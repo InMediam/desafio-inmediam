@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\PayBillingRequest;
+use App\Http\Resources\BillingListResource;
 use App\Http\Resources\BillingResource;
 use App\Http\Resources\PaymentResource;
 use App\Models\Billing;
@@ -13,13 +14,20 @@ class BillingController
 {
     public function __construct(private readonly BillingPaymentService $paymentService) {}
 
+    public function index(): JsonResponse
+    {
+        $billings = Billing::with(['plan', 'customer'])->orderBy('id')->get();
+
+        return BillingListResource::collection($billings)->response();
+    }
+
     public function show(string $id): JsonResponse
     {
         if (! ctype_digit($id)) {
             return response()->json(['error' => 'Cobrança não encontrada'], 404);
         }
 
-        $billing = Billing::with(['plan', 'payments.creditCard'])->find($id);
+        $billing = Billing::with(['plan', 'customer', 'payments.creditCard'])->find($id);
 
         if (! $billing) {
             return response()->json(['error' => 'Cobrança não encontrada'], 404);
