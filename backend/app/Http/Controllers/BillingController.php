@@ -11,6 +11,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class BillingController
 {
@@ -35,7 +36,12 @@ class BillingController
             return response()->json(['error' => 'Cobrança não encontrada'], 404);
         }
 
-        Log::channel('payments')->info('billing.payment.started', ['billing_id' => (int) $id]);
+        $correlationId = (string) Str::uuid();
+
+        Log::channel('payments')->info('billing.payment.started', [
+            'billing_id' => (int) $id,
+            'correlation_id' => $correlationId,
+        ]);
 
         $idempotencyKey = $request->header('Idempotency-Key');
 
@@ -43,16 +49,22 @@ class BillingController
             $existingPayment = Payment::where('idempotency_key', $idempotencyKey)->first();
 
             if ($existingPayment) {
+                Log::channel('payments')->info('billing.payment.idempotent_replay', [
+                    'billing_id' => (int) $existingPayment->billing_id,
+                    'correlation_id' => $correlationId,
+                ]);
+
                 return response()->json($existingPayment);
             }
         }
 
-        $result = DB::transaction(function () use ($id, $request, $idempotencyKey) {
+        $result = DB::transaction(function () use ($id, $request, $idempotencyKey, $correlationId) {
             $billing = Billing::lockForUpdate()->find($id);
 
             if (! $billing) {
                 Log::channel('payments')->warning('billing.payment.rejected', [
                     'billing_id' => (int) $id,
+                    'correlation_id' => $correlationId,
                     'reason' => 'not_found',
                 ]);
 
@@ -62,6 +74,7 @@ class BillingController
             if ($billing->status === 'paid') {
                 Log::channel('payments')->warning('billing.payment.rejected', [
                     'billing_id' => $billing->id,
+                    'correlation_id' => $correlationId,
                     'asaas_charge_id' => $billing->asaas_charge_id,
                     'reason' => 'already_paid',
                 ]);
@@ -73,10 +86,15 @@ class BillingController
             $baseUrl = config('services.asaas.base_url');
 
             if (! $apiKey) {
-                Log::channel('payments')->error('billing.payment.failed', ['billing_id' => $billing->id]);
+                Log::channel('payments')->error('billing.payment.failed', [
+                    'billing_id' => $billing->id,
+                    'correlation_id' => $correlationId,
+                ]);
 
                 return ['status' => 502, 'error' => 'Não foi possível processar o pagamento. Tente novamente mais tarde.'];
             }
+
+            $asaasCallStartedAt = microtime(true);
 
             try {
                 $customerId = $billing->customer->asaas_customer_id;
@@ -128,20 +146,29 @@ class BillingController
                         'addressNumber' => $billing->customer->address_number,
                     ],
                 ]);
-            } catch (ConnectionException) {
+            } catch (ConnectionException $exception) {
                 Log::channel('payments')->error('billing.payment.failed', [
                     'billing_id' => $billing->id,
+                    'correlation_id' => $correlationId,
                     'asaas_charge_id' => $chargeId ?? null,
+                    'exception_class' => $exception::class,
+                    'duration_ms' => (int) ((microtime(true) - $asaasCallStartedAt) * 1000),
                 ]);
 
                 return ['status' => 502, 'error' => 'Não foi possível processar o pagamento. Tente novamente mais tarde.'];
             }
 
+            $asaasDurationMs = (int) ((microtime(true) - $asaasCallStartedAt) * 1000);
+
             if ($response->serverError()) {
                 Log::channel('payments')->error('billing.payment.failed', [
                     'billing_id' => $billing->id,
+                    'correlation_id' => $correlationId,
                     'asaas_charge_id' => $chargeId,
                     'http_status' => $response->status(),
+                    'asaas_error_code' => $response->json('errors.0.code'),
+                    'asaas_error_description' => $response->json('errors.0.description'),
+                    'duration_ms' => $asaasDurationMs,
                 ]);
 
                 return ['status' => 502, 'error' => 'Não foi possível processar o pagamento. Tente novamente mais tarde.'];
@@ -150,8 +177,12 @@ class BillingController
             if ($response->clientError()) {
                 Log::channel('payments')->warning('billing.payment.declined', [
                     'billing_id' => $billing->id,
+                    'correlation_id' => $correlationId,
                     'asaas_charge_id' => $chargeId,
                     'http_status' => $response->status(),
+                    'asaas_error_code' => $response->json('errors.0.code'),
+                    'asaas_error_description' => $response->json('errors.0.description'),
+                    'duration_ms' => $asaasDurationMs,
                 ]);
 
                 return ['status' => 422, 'error' => 'Pagamento recusado. Verifique os dados do cartão e tente novamente.'];
@@ -177,16 +208,18 @@ class BillingController
                 'idempotency_key' => $idempotencyKey,
             ]);
 
-            $billing->status = in_array($responseData->status, ['CONFIRMED', 'RECEIVED'], true)
-                ? 'paid'
-                : 'pending';
+            $isConfirmed = in_array($responseData->status, ['CONFIRMED', 'RECEIVED'], true);
+
+            $billing->status = $isConfirmed ? 'paid' : 'pending';
             $billing->save();
 
-            Log::channel('payments')->info('billing.payment.confirmed', [
+            Log::channel('payments')->info($isConfirmed ? 'billing.payment.confirmed' : 'billing.payment.pending', [
                 'billing_id' => $billing->id,
+                'correlation_id' => $correlationId,
                 'asaas_charge_id' => $chargeId,
                 'status' => $responseData->status,
                 'http_status' => $response->status(),
+                'duration_ms' => $asaasDurationMs,
             ]);
 
             return ['status' => 200, 'payment' => $payment];
