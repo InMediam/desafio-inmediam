@@ -43,4 +43,31 @@ class ShowBillingTest extends TestCase
         $response->assertOk();
         $this->assertStringNotContainsString('card_token', $response->getContent());
     }
+
+    public function test_a_paid_billing_response_does_not_expose_internal_or_sensitive_fields(): void
+    {
+        $billing = Billing::factory()->paid()->create();
+
+        $response = $this->getJson("/api/billing/{$billing->id}");
+
+        $response->assertOk();
+
+        $forbiddenFields = [
+            'asaas_charge_id',
+            'idempotency_key',
+            'customer_id',
+            'plan_id',
+            'credit_card_id',
+            'billing_id',
+            'created_at',
+            'updated_at',
+            'card_token',
+            'document',
+            'email',
+        ];
+
+        foreach ($forbiddenFields as $field) {
+            $this->assertStringNotContainsString('"'.$field.'"', $response->getContent());
+        }
+    }
 }
