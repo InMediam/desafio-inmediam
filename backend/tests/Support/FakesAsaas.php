@@ -4,6 +4,7 @@ namespace Tests\Support;
 
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 
 trait FakesAsaas
 {
@@ -24,12 +25,15 @@ trait FakesAsaas
     {
         Http::fake(array_merge([
             // Registered before "*/payments" so it isn't swallowed by it.
-            '*/payments/*/payWithCreditCard' => Http::response([
+            // The token is generated per call so multiple successful
+            // payments in the same test don't collide on the unique
+            // card_token column.
+            '*/payments/*/payWithCreditCard' => fn () => Http::response([
                 'status' => 'CONFIRMED',
                 'creditCard' => [
                     'creditCardNumber' => '1234',
                     'creditCardBrand' => 'VISA',
-                    'creditCardToken' => 'tok_000000000001',
+                    'creditCardToken' => 'tok_'.Str::random(16),
                 ],
             ], 200),
             '*/customers' => Http::response([

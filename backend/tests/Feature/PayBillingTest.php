@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Billing;
+use App\Models\Customer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Tests\Support\FakesAsaas;
@@ -264,5 +265,109 @@ class PayBillingTest extends TestCase
         $response->assertStatus(502);
 
         Http::assertNothingSent();
+    }
+
+    private function validPayload(array $overrides = []): array
+    {
+        return array_merge([
+            'card_number' => self::APPROVED_TEST_CARD_NUMBER,
+            'card_holder_name' => 'JOAO DA SILVA',
+            'expiry_date' => $this->validExpiryDate(),
+            'cvv' => '123',
+        ], $overrides);
+    }
+
+    public function test_it_returns_409_and_calls_asaas_once_when_paying_the_same_billing_twice(): void
+    {
+        $this->fakeAsaas();
+
+        $billing = Billing::factory()->pending()->create();
+
+        $this->postJson("/api/billing/{$billing->id}/pay", $this->validPayload())->assertOk();
+
+        $second = $this->postJson("/api/billing/{$billing->id}/pay", $this->validPayload());
+        $second->assertStatus(409);
+
+        Http::assertSentCount(3);
+    }
+
+    public function test_repeating_the_same_idempotency_key_does_not_call_asaas_again(): void
+    {
+        $this->fakeAsaas();
+
+        $billing = Billing::factory()->pending()->create();
+
+        $first = $this->withHeaders(['Idempotency-Key' => 'key-123'])
+            ->postJson("/api/billing/{$billing->id}/pay", $this->validPayload());
+        $first->assertOk();
+
+        $second = $this->withHeaders(['Idempotency-Key' => 'key-123'])
+            ->postJson("/api/billing/{$billing->id}/pay", $this->validPayload());
+        $second->assertOk();
+        $this->assertSame($first->json('id'), $second->json('id'));
+
+        Http::assertSentCount(3);
+    }
+
+    public function test_second_payment_from_the_same_customer_does_not_create_a_new_asaas_customer(): void
+    {
+        $this->fakeAsaas();
+
+        $customer = Customer::factory()->create();
+        $firstBilling = Billing::factory()->pending()->for($customer)->create();
+        $secondBilling = Billing::factory()->pending()->for($customer)->create();
+
+        $this->postJson("/api/billing/{$firstBilling->id}/pay", $this->validPayload())->assertOk();
+        $this->postJson("/api/billing/{$secondBilling->id}/pay", $this->validPayload())->assertOk();
+
+        Http::assertSentCount(5);
+    }
+
+    public function test_retrying_after_a_decline_does_not_create_a_new_asaas_charge(): void
+    {
+        $this->fakeAsaas([
+            '*/payments/*/payWithCreditCard' => Http::sequence()
+                ->push([
+                    'errors' => [
+                        ['code' => 'invalid_creditCard', 'description' => 'Cartão recusado pela operadora.'],
+                    ],
+                ], 400)
+                ->push([
+                    'status' => 'CONFIRMED',
+                    'creditCard' => [
+                        'creditCardNumber' => '1234',
+                        'creditCardBrand' => 'VISA',
+                        'creditCardToken' => 'tok_000000000001',
+                    ],
+                ], 200),
+        ]);
+
+        $billing = Billing::factory()->pending()->create();
+
+        $this->postJson("/api/billing/{$billing->id}/pay", $this->validPayload())->assertStatus(422);
+        $this->postJson("/api/billing/{$billing->id}/pay", $this->validPayload())->assertOk();
+
+        Http::assertSentCount(4);
+    }
+
+    public function test_pay_with_credit_card_payload_includes_the_customers_holder_info(): void
+    {
+        $this->fakeAsaas();
+
+        $customer = Customer::factory()->create([
+            'phone' => '11987654321',
+            'postal_code' => '01310100',
+            'address_number' => '123',
+        ]);
+        $billing = Billing::factory()->pending()->for($customer)->create();
+
+        $this->postJson("/api/billing/{$billing->id}/pay", $this->validPayload())->assertOk();
+
+        Http::assertSent(function ($request) use ($customer) {
+            return str_ends_with($request->url(), '/payWithCreditCard')
+                && $request['creditCardHolderInfo']['phone'] === $customer->phone
+                && $request['creditCardHolderInfo']['postalCode'] === $customer->postal_code
+                && $request['creditCardHolderInfo']['addressNumber'] === $customer->address_number;
+        });
     }
 }

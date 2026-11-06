@@ -18,6 +18,9 @@ class CustomerFactory extends Factory
             'name' => fake('pt_BR')->name(),
             'email' => fake()->unique()->safeEmail(),
             'document' => fake('pt_BR')->unique()->cpf(false),
+            'phone' => fake('pt_BR')->cellphoneNumber(false),
+            'postal_code' => str_replace('-', '', fake('pt_BR')->postcode),
+            'address_number' => (string) fake()->numberBetween(1, 9999),
         ];
     }
 }
