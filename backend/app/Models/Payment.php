@@ -9,7 +9,7 @@ class Payment extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['billing_id', 'credit_card_id', 'amount_paid', 'status', 'paid_at'];
+    protected $fillable = ['billing_id', 'credit_card_id', 'amount_paid', 'status', 'paid_at', 'asaas_charge_id', 'idempotency_key'];
 
     public function billing()
     {
