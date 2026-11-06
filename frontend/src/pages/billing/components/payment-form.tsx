@@ -1,73 +1,33 @@
 import 'react-credit-cards-2/dist/es/styles-compiled.css'
 
-import { zodResolver } from '@hookform/resolvers/zod'
-import { Button, Input, Label } from '@inmediam/ui'
-import { useMutation } from '@tanstack/react-query'
-import axios from 'axios'
+import { Button, Input } from '@inmediam/ui'
 import { Loader2 } from 'lucide-react'
 import { useState } from 'react'
 import Cards, { Focused } from 'react-credit-cards-2'
-import { useForm } from 'react-hook-form'
-import { toast } from 'sonner'
-import { z } from 'zod'
 
-const paymentSchema = z.object({
-  cardNumber: z.string(),
-  holderName: z.string(),
-  expiryDate: z.string(),
-  cvv: z.string(),
-})
-
-type PaymentFormData = z.infer<typeof paymentSchema>
+import { usePaymentForm } from '../hooks/use-payment-form'
+import { FormField } from './form-field'
 
 interface PaymentFormProps {
   billingId: string
-  amount: number
 }
 
-export function PaymentForm({ billingId, amount }: PaymentFormProps) {
-  const [cardNumber, setCardNumber] = useState<string>()
-  const [cvv, setCvv] = useState<string>()
+export function PaymentForm({ billingId }: PaymentFormProps) {
   const [focused, setFocused] = useState<Focused>('')
+  const {
+    form,
+    isPending,
+    onSubmit,
+    handleCardNumberChange,
+    handleExpiryDateChange,
+    handleCvvChange,
+  } = usePaymentForm({ billingId })
 
   const {
     register,
-    handleSubmit,
-    watch,
     formState: { errors },
-  } = useForm<PaymentFormData>({
-    resolver: zodResolver(paymentSchema),
-  })
-
-  const watchedValues = {
-    cardNumber: watch('cardNumber', ''),
-    holderName: watch('holderName', ''),
-    expiryDate: watch('expiryDate', ''),
-    cvv: watch('cvv', ''),
-  }
-
-  const { mutateAsync: submitPayment, isPending } = useMutation({
-    mutationFn: (data: PaymentFormData) =>
-      axios
-        .create()
-        .post(`http://localhost:8000/api/billing/${billingId}/pay`, {
-          card_number: data.cardNumber,
-          card_holder_name: data.holderName,
-          expiry_date: data.expiryDate,
-          cvv: data.cvv,
-          amount,
-        }),
-    onSuccess: () => {
-      toast.success('Pagamento realizado com sucesso!')
-    },
-    onError: () => {
-      toast.success('Dados salvos com sucesso!')
-    },
-  })
-
-  function handlePayment(data: PaymentFormData) {
-    submitPayment(data)
-  }
+  } = form
+  const values = form.watch()
 
   return (
     <div className="w-full rounded-lg border border-border bg-card p-6 shadow-sm">
@@ -77,83 +37,66 @@ export function PaymentForm({ billingId, amount }: PaymentFormProps) {
 
       <div className="mb-6">
         <Cards
-          number={cardNumber || watchedValues.cardNumber || ''}
-          name={watchedValues.holderName}
-          expiry={watchedValues.expiryDate}
-          cvc={cvv || watchedValues.cvv || ''}
+          number={values.cardNumber}
+          name={values.holderName}
+          expiry={values.expiryDate}
+          cvc={values.cvv}
           focused={focused}
         />
       </div>
 
-      <form onSubmit={handleSubmit(handlePayment)} className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="cardNumber">Número do cartão</Label>
+      <form onSubmit={onSubmit} className="space-y-4">
+        <FormField
+          id="cardNumber"
+          label="Número do cartão"
+          error={errors.cardNumber?.message}
+        >
           <Input
             id="cardNumber"
             placeholder="0000 0000 0000 0000"
-            value={cardNumber}
-            {...register('cardNumber')}
-            onChange={(e) => {
-              setCardNumber(e.target.value)
-              register('cardNumber').onChange(e)
-            }}
+            value={values.cardNumber}
+            onChange={(e) => handleCardNumberChange(e.target.value)}
             onFocus={() => setFocused('number')}
           />
-          {errors.cardNumber && (
-            <p className="text-sm text-error-500">
-              {errors.cardNumber.message}
-            </p>
-          )}
-        </div>
+        </FormField>
 
-        <div className="space-y-2">
-          <Label htmlFor="holderName">Nome do titular</Label>
+        <FormField
+          id="holderName"
+          label="Nome do titular"
+          error={errors.holderName?.message}
+        >
           <Input
             id="holderName"
-            placeholder="JOÃO M A SILVA"
+            placeholder="JOÃO DA SILVA"
             {...register('holderName')}
             onFocus={() => setFocused('name')}
           />
-          {errors.holderName && (
-            <p className="text-sm text-error-500">
-              {errors.holderName.message}
-            </p>
-          )}
-        </div>
+        </FormField>
 
         <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="expiryDate">Validade</Label>
+          <FormField
+            id="expiryDate"
+            label="Validade"
+            error={errors.expiryDate?.message}
+          >
             <Input
               id="expiryDate"
               placeholder="MM/AA"
-              {...register('expiryDate')}
+              value={values.expiryDate}
+              onChange={(e) => handleExpiryDateChange(e.target.value)}
               onFocus={() => setFocused('expiry')}
             />
-            {errors.expiryDate && (
-              <p className="text-sm text-error-500">
-                {errors.expiryDate.message}
-              </p>
-            )}
-          </div>
+          </FormField>
 
-          <div className="space-y-2">
-            <Label htmlFor="cvv">CVV</Label>
+          <FormField id="cvv" label="CVV" error={errors.cvv?.message}>
             <Input
               id="cvv"
               placeholder="123"
-              value={cvv}
-              {...register('cvv')}
-              onChange={(e) => {
-                setCvv(e.target.value)
-                register('cvv').onChange(e)
-              }}
+              value={values.cvv}
+              onChange={(e) => handleCvvChange(e.target.value)}
               onFocus={() => setFocused('cvc')}
             />
-            {errors.cvv && (
-              <p className="text-sm text-error-500">{errors.cvv.message}</p>
-            )}
-          </div>
+          </FormField>
         </div>
 
         <Button type="submit" className="w-full" disabled={isPending}>
