@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Services\Billing\CreditCardData;
 use Closure;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Carbon;
@@ -69,6 +70,17 @@ class PayBillingRequest extends FormRequest
     public function expiryYear(): string
     {
         return '20'.explode('/', $this->expiry_date)[1];
+    }
+
+    public function toCreditCardData(): CreditCardData
+    {
+        return new CreditCardData(
+            holderName: $this->card_holder_name,
+            number: $this->card_number,
+            expiryMonth: $this->expiryMonth(),
+            expiryYear: $this->expiryYear(),
+            cvv: $this->cvv,
+        );
     }
 
     private function parseExpiryDate(string $value): Carbon
