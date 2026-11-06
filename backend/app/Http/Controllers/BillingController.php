@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\PayBillingRequest;
+use App\Http\Resources\BillingResource;
+use App\Http\Resources\PaymentResource;
 use App\Models\Billing;
 use App\Services\Billing\BillingPaymentService;
 use Illuminate\Http\JsonResponse;
@@ -23,7 +25,7 @@ class BillingController
             return response()->json(['error' => 'Cobrança não encontrada'], 404);
         }
 
-        return response()->json($billing);
+        return (new BillingResource($billing))->response();
     }
 
     public function pay(string $id, PayBillingRequest $request): JsonResponse
@@ -34,6 +36,6 @@ class BillingController
             $request->header('Idempotency-Key'),
         );
 
-        return response()->json($payment);
+        return (new PaymentResource($payment))->response()->setStatusCode(200);
     }
 }
